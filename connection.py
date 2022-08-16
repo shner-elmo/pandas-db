@@ -56,6 +56,23 @@ class DataBase:
         """
         return [x[1] for x in self.cursor.execute(f"PRAGMA table_info('{table_name}')")]
 
+    def __enter__(self) -> 'DataBase':
+        """
+
+        :return:
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """
+
+        :param exc_type:
+        :param exc_val:
+        :param exc_tb:
+        :return:
+        """
+        self.exit()
+
     def _get_table(self, table_name: str) -> Table:
         """
         Get Table object for given table_name
@@ -64,9 +81,12 @@ class DataBase:
         :raise: ValueError if table name is not valid
         :return: Table
         """
-
         if table_name not in self.tables:
             raise TableError(f'No such table: {table_name}')
+
+        if not hasattr(self, table_name):  # if table was created after the instance:
+            setattr(self, table_name, Table(cursor=self.cursor, name=table_name))
+
         return getattr(self, table_name)
 
     def __getitem__(self, item: str) -> Table:

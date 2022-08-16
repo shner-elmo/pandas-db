@@ -51,7 +51,7 @@ def convert_sql_to_db(sql_file: str, db_file: str) -> None:
     conn.close()
 
 
-def load_sql_to_sqlite(sql_file: str) -> sqlite3.connect:
+def load_sql_to_sqlite(sql_file: str) -> sqlite3.Connection:
     """
     Create a Sqlite3 connection with a .sql file
 
