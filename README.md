@@ -4,8 +4,8 @@
 
 To instantiate the connection: 
 ```python
-from connection import DataBase
-db = DataBase('forestation.db')
+from src import DataBase
+db = DataBase(db_path='data/forestation.db')
 ```
 
 Get all tables:
@@ -44,8 +44,20 @@ print(f'{col.type=}, {col.len=}')
 ```
 col.type='TEXT', col.len=5886
 ```
+Get table rows:
+```python
+for name in db.land_area:
+    print(name)
+```
+```
+('ABW', 'Aruba', 2016, 69.5)
+('AFG', 'Afghanistan', 2016, 252069.5)
+('AGO', 'Angola', 2016, 481351.35)
+('ALB', 'Albania', 2016, 10579.15)
+...
+```
 
-Generate column values:
+Or with columns:
 ```py
 for name in db.land_area.country_name:
     print(name)
@@ -58,7 +70,12 @@ Albania
 ...
 ```
 
-And finally when you are finished you should close the SQL connection:
+And finally, when you're done don't forget to close the SQL connection:
 ```py
 db.exit()
 ```
+
+TODO:
+- [ ] Add test for tables created after init
+- [ ] Finish tests
+- [ ] Add setup.py file
