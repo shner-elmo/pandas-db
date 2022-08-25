@@ -46,8 +46,8 @@ col.type='TEXT', col.len=5886
 ```
 Get table rows:
 ```python
-for name in db.land_area:
-    print(name)
+for row in db.land_area:
+    print(row)
 ```
 ```
 ('ABW', 'Aruba', 2016, 69.5)
