@@ -10,7 +10,7 @@ SQL_FILE = '../data/parch-and-posey.sql'
 SQLITE_FILE = '../data/mental_health.sqlite'
 MAIN_DATABASE = DB_FILE
 
-MIN_TABLES = 2
+MIN_TABLES = 1
 
 
 class TestConnection(unittest.TestCase):
@@ -19,7 +19,7 @@ class TestConnection(unittest.TestCase):
 
         tables = self.db.tables
         self.assertGreaterEqual(len(tables), MIN_TABLES,
-                                msg='Data Base must have at least one table for the tests')
+                                msg='Database must have at least one table for the tests')
 
     def tearDown(self):
         self.db.exit()
@@ -47,7 +47,7 @@ class TestConnection(unittest.TestCase):
 
         self.assertRaisesRegex(
             sqlite3.ProgrammingError,
-            '^Cannot operate on a closed cursor.$',
+            '^Cannot operate on a closed database.$',
             db.get_columns, table
         )
 
@@ -68,7 +68,7 @@ class TestConnection(unittest.TestCase):
 
         self.assertRaisesRegex(
             sqlite3.ProgrammingError,
-            '^Cannot operate on a closed cursor.$',
+            '^Cannot operate on a closed database.$',
             data_base.get_columns, table
         )
 
