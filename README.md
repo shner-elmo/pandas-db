@@ -76,6 +76,6 @@ db.exit()
 ```
 
 TODO:
+- [ ] Finish Expression tests
 - [ ] Add test for tables created after init
-- [ ] Finish tests
-- [ ] Add setup.py file
+- [x] Add setup.py file
