@@ -26,18 +26,18 @@ class Expression:
         return Expression(query=f'{self.query} OR {expression.query} ')
 
     def __str__(self) -> str:
-        return __class__.__name__ + f'("{self.query}")'
+        return __class__.__name__ + f'(query="{self.query}")'
 
     def __repr__(self) -> str:
-        return __class__.__name__ + f'("{self.query}")'
+        return __class__.__name__ + f'(query="{self.query}")'
 
 
 class Column:
     """
     An object that represents a column of a table within a DataBase
     """
-    def __init__(self, cursor: sqlite3.Cursor, table_name: str, col_name: str) -> None:
-        self.cursor = cursor
+    def __init__(self, conn: sqlite3.Connection, table_name: str, col_name: str) -> None:
+        self.conn = conn
         self._table = table_name
         self._name = col_name
         self.query = f'SELECT {col_name} FROM {table_name}'
@@ -47,9 +47,10 @@ class Column:
         """
         Get column type
         """
-        for row in self.cursor.execute(f"PRAGMA table_info('{self._table}')"):
-            if row[1] == self._name:
-                return row[2]
+        with self.conn as cursor:
+            for row in cursor.execute(f"PRAGMA table_info('{self._table}')"):
+                if row[1] == self._name:
+                    return row[2]
 
     @property
     def len(self) -> int:
@@ -62,7 +63,7 @@ class Column:
         """
         Return column as a Pandas Series
         """
-        return Series(data=self.data(), name=self._name)
+        return Series(data=self, name=self._name)
 
     def data(self, limit: int = None) -> list:
         """
@@ -73,13 +74,15 @@ class Column:
         :param limit: int
         :return: list
         """
-        if limit:
-            return [x[0] for x in self.cursor.execute(self.query + f' LIMIT {limit}')]
-        return [x[0] for x in self.cursor.execute(self.query)]
+        with self.conn as cursor:
+            if limit:
+                return [x[0] for x in cursor.execute(self.query + f' LIMIT {limit}')]
+            return [x[0] for x in cursor.execute(self.query)]
 
     def __iter__(self) -> Generator:
-        for i in self.cursor.execute(self.query):
-            yield i[0]
+        with self.conn as cursor:
+            for i in cursor.execute(self.query):
+                yield i[0]
 
     def __len__(self) -> int:
         return self.len
@@ -137,20 +140,21 @@ class Table:
     """
     An object that represents an SQL table
     """
-    def __init__(self, cursor: sqlite3.Cursor, name: str) -> None:
-        self.cursor = cursor
+    def __init__(self, conn: sqlite3.Connection, name: str) -> None:
+        self.conn = conn
         self._name = name
         self.query = f'SELECT * FROM {self._name}'
 
         for col in self.columns:
-            setattr(self, col, Column(cursor=self.cursor, table_name=self._name, col_name=col))
+            setattr(self, col, Column(conn=self.conn, table_name=self._name, col_name=col))
 
     @property
     def columns(self) -> list[str]:
         """
         Get list with column names
         """
-        return [x[1] for x in self.cursor.execute(f"PRAGMA table_info('{self._name}')")]
+        with self.conn as cursor:
+            return [x[1] for x in cursor.execute(f"PRAGMA table_info('{self._name}')")]
 
     @property
     def len(self) -> int:
@@ -179,22 +183,24 @@ class Table:
         :param limit: int
         :return: list
         """
-        if limit:
-            return self.cursor.execute(self.query + f' LIMIT {limit}').fetchall()
-        return self.cursor.execute(self.query).fetchall()
+        with self.conn as cursor:
+            if limit:
+                return cursor.execute(self.query + f' LIMIT {limit}').fetchall()
+            return cursor.execute(self.query).fetchall()
 
     def items(self) -> Generator:
         """
         Generator that yields: (column_name, col_object)
         """
         for col in self.columns:
-            yield col, Column(cursor=self.cursor, table_name=self._name, col_name=col)
+            yield col, getattr(self, col)
 
     def __iter__(self) -> Generator:
         """
         Yield rows from cursor
         """
-        yield from self.cursor.execute(self.query)
+        with self.conn as cursor:
+            yield from cursor.execute(self.query)
 
     def _get_col(self, column):
         if column not in self.columns:
@@ -225,7 +231,7 @@ class Table:
 
     def __hash__(self) -> int:
         """ Get hash value of Table """
-        return hash(f'{self._table}.{self._name}')
+        return hash(f'{self._name}')
 
     def __str__(self) -> str:
         """ Return table as a Pandas DataFrame """

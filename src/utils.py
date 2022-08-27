@@ -1,5 +1,4 @@
 import pandas as pd
-import requests
 
 import sqlite3
 from pathlib import Path
@@ -62,19 +61,3 @@ def load_sql_to_sqlite(sql_file: str) -> sqlite3.Connection:
         conn = sqlite3.connect(':memory:')
         conn.executescript(file.read())
     return conn
-
-
-def download_dataset(file_name: str, url: str = None) -> None:
-    """
-    Download dataset from web
-
-    :param file_name: str, ex: dataset.sql
-    :param url: str (optional), url to download from
-    :return: None
-    """
-    if url is None:
-        url = 'https://video.udacity-data.com/topher/2020/May/5eb5533b_parch-and-posey/parch-and-posey.sql'
-    response = requests.get(url)
-
-    with open(file_name, 'w') as file:
-        file.write(response.text)

@@ -8,6 +8,7 @@ from .exceptions import FileTypeError, InvalidTableError
 
 class DataBase:
     def __init__(self, db_path: str) -> None:
+        self.db_path = db_path
         extension = db_path.split('.')[-1]
         valid_extension = ('sql', 'db', 'sqlite', 'sqlite3')
 
@@ -19,11 +20,8 @@ class DataBase:
         else:
             self.conn = sqlite3.connect(db_path)
 
-        self.cursor = self.conn.cursor()
-        self.db_path = db_path
-
         for table in self.tables:
-            setattr(self, table, Table(cursor=self.cursor, name=table))
+            setattr(self, table, Table(conn=self.conn, name=table))
 
     def exit(self) -> None:
         """
@@ -32,7 +30,6 @@ class DataBase:
         :return: None
         """
         try:
-            self.cursor.close()
             self.conn.close()
 
         except sqlite3.ProgrammingError:
@@ -45,7 +42,8 @@ class DataBase:
 
         :return: list with table names
         """
-        return [x[0] for x in self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        with self.conn as cursor:
+            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")]
 
     def get_columns(self, table_name: str) -> list[str]:
         """
@@ -57,7 +55,8 @@ class DataBase:
         if table_name not in self.tables:
             raise InvalidTableError(f'No such table: {table_name}')
 
-        return [x[1] for x in self.cursor.execute(f"PRAGMA table_info('{table_name}')")]
+        with self.conn as cursor:
+            return [x[1] for x in cursor.execute(f"PRAGMA table_info('{table_name}')")]
 
     def __enter__(self) -> 'DataBase':
         """
@@ -88,7 +87,7 @@ class DataBase:
             raise InvalidTableError(f'No such table: {table_name}')
 
         if not hasattr(self, table_name):  # if table was created after the instance:
-            setattr(self, table_name, Table(cursor=self.cursor, name=table_name))
+            setattr(self, table_name, Table(conn=self.conn, name=table_name))
 
         return getattr(self, table_name)
 
