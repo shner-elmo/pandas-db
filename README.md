@@ -70,9 +70,48 @@ Albania
 ...
 ```
 
+To view the results of a query in a Dataframe:
+```python
+q = """
+SELECT * FROM forest_area
+JOIN regions
+ON regions.country_code = forest_area.country_code
+AND regions.country_name = forest_area.country_name
+"""
+db.query(q)
+```
+```
+     country_code  ...         income_group
+0             ABW  ...          High income
+1             AFG  ...           Low income
+2             AGO  ...  Lower middle income
+3             ALB  ...  Upper middle income
+4             AND  ...          High income
+           ...  ...                  ...
+5719          XKX  ...  Lower middle income
+5720          YEM  ...           Low income
+5721          ZAF  ...  Upper middle income
+5722          ZMB  ...  Lower middle income
+5723          ZWE  ...           Low income
+[5724 rows x 8 columns]
+```
+
 And finally, when you're done don't forget to close the SQL connection:
 ```py
 db.exit()
+```
+
+Using a context manager:
+```python
+with DataBase(db_path='data/forestation.db') as db:
+    print(db.regions.region.data(5))
+```
+```
+['South Asia', 
+ 'Europe & Central Asia', 
+ 'Middle East & North Africa',
+ 'East Asia & Pacific', 
+ 'Europe & Central Asia']
 ```
 
 TODO:
