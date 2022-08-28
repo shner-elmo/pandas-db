@@ -105,7 +105,7 @@ class DataBase:
         except InvalidTableError:
             raise KeyError
 
-    def __getattr__(self, item) -> Table:
+    def __getattr__(self, item: str) -> Table:
         """
 
         :param item:

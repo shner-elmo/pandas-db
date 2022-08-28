@@ -96,6 +96,7 @@ class Column:
             return [x[0] for x in cursor.execute(self.query)]
 
     def __iter__(self) -> Generator:
+        """ Yield values from column """
         with self.conn as cursor:
             for i in cursor.execute(self.query):
                 yield i[0]
@@ -271,28 +272,31 @@ class Table:
         with self.conn as cursor:
             yield from cursor.execute(self.query)
 
-    def _get_col(self, column):
-        if column not in self.columns:
-            raise InvalidColumnError(f'Column must be one of the following: {", ".join(self.columns)}')
-        return getattr(self, column)
-
-    def __getitem__(self, item) -> Column:
+    def __getitem__(self, item: str) -> Column:
         """
         Get column object for given column name
 
         :param item: str, column-name
         :return: Column
+        :raise: KeyError
         """
-        return self._get_col(item)
+        try:
+            return self._get_col(item)
+        except InvalidColumnError:
+            raise KeyError
 
-    def __getattr__(self, item) -> Column:
+    def __getattr__(self, item: str) -> Column:
         """
         Get column object for given column name
 
         :param item: str, column-name
         :return: Column
+        :raise: AttributeError
         """
-        return self._get_col(item)
+        try:
+            return self._get_col(item)
+        except InvalidColumnError:
+            raise AttributeError
 
     def __len__(self) -> int:
         """ Return amount of rows """
