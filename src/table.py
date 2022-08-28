@@ -10,25 +10,41 @@ class Expression:
     """
     A class for converting Python's logical operators to SQL-compatible strings
     """
-    def __init__(self, query: str):
+    def __init__(self, query: str) -> None:
         self.query = query
 
-    def __and__(self, expression):
+    def __and__(self, expression: 'Expression') -> 'Expression':
+        """
+        Return an Expression object with 'self.query' as: 'Expression1 AND Expression2'
+
+        :param expression: Expression
+        :return: Expression
+        :raise: ExpressionError if param: expression isn't an instance of Expression
+        """
         if not isinstance(expression, Expression):
             raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
 
         return Expression(query=f'{self.query} AND {expression.query} ')
 
-    def __or__(self, expression):
+    def __or__(self, expression: 'Expression') -> 'Expression':
+        """
+        Return an Expression object with 'self.query' as: 'Expression1 OR Expression2'
+
+        :param expression: Expression
+        :return: Expression
+        :raise: ExpressionError if param: expression isn't an instance of Expression
+        """
         if not isinstance(expression, Expression):
             raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
 
         return Expression(query=f'{self.query} OR {expression.query} ')
 
     def __str__(self) -> str:
+        """ Get string representation of Expression instance """
         return __class__.__name__ + f'(query="{self.query}")'
 
     def __repr__(self) -> str:
+        """ Get string representation of Expression instance """
         return __class__.__name__ + f'(query="{self.query}")'
 
 
@@ -85,6 +101,7 @@ class Column:
                 yield i[0]
 
     def __len__(self) -> int:
+        """ Get amount of rows """
         return self.len
 
     def __hash__(self) -> int:
@@ -99,40 +116,92 @@ class Column:
         """ Return column as a Pandas Series """
         return self.to_series().to_string(max_rows=10, index=True, name=True, length=True, dtype=True)
 
-    def __gt__(self, other):
+    # TODO: complete expressions docstrings
+    def __gt__(self, other: float) -> Expression:
+        """
+
+        :param other: float
+        :return: Expression
+        """
         return Expression(query=f'{self._table}.{self._name} > {other} ')
 
-    def __ge__(self, other):
+    def __ge__(self, other: float) -> Expression:
+        """
+
+        :param other: float
+        :return: Expression
+        """
         return Expression(query=f'{self._table}.{self._name} >= {other} ')
 
-    def __lt__(self, other):
+    def __lt__(self, other: float) -> Expression:
+        """
+
+        :param other: float
+        :return: Expression
+        """
         return Expression(query=f'{self._table}.{self._name} < {other} ')
 
-    def __le__(self, other):
+    def __le__(self, other: float) -> Expression:
+        """
+
+        :param other: float
+        :return: Expression
+        """
         return Expression(query=f'{self._table}.{self._name} <= {other} ')
 
-    def __eq__(self, other):
+    def __eq__(self, other: str | float) -> Expression:
+        """
+
+        :param other: str or float
+        :return: Expression
+        """
         if type(other) is str:
             return Expression(query=f"{self._table}.{self._name} = '{other}' ")
         return Expression(query=f'{self._table}.{self._name} = {other} ')
 
-    def __ne__(self, other):
+    def __ne__(self, other: str | float) -> Expression:
+        """
+
+        :param other: str or float
+        :return: Expression
+        """
         if type(other) is str:
             return Expression(query=f"{self._table}.{self._name} != '{other}' ")
         return Expression(query=f'{self._table}.{self._name} != {other} ')
 
-    def isin(self, options: tuple):
+    def isin(self, options: tuple) -> Expression:
+        """
+
+        :param options: tuple
+        :return: Expression
+        """
         if type(options) is not tuple:
             options = tuple(options)
         return Expression(query=f'{self._table}.{self._name} IN {options} ')
 
-    def between(self, x, y):
+    def between(self, x: float, y: float) -> Expression:
+        """
+
+        :param x: float
+        :param y: float
+        :return: Expression
+        """
         return Expression(query=f'{self._table}.{self._name} BETWEEN {x} AND {y} ')
 
-    def like(self, regex):
+    def like(self, regex: str) -> Expression:
+        """
+
+        :param regex: str
+        :return: Expression
+        """
         return Expression(query=f"{self._table}.{self._name} LIKE '{regex}' ")
 
-    def ilike(self, regex):
+    def ilike(self, regex: str) -> Expression:
+        """
+
+        :param regex: str
+        :return: Expression
+        """
         return Expression(query=f"{self._table}.{self._name} ILIKE '{regex}' ")
 
 

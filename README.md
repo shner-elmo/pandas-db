@@ -77,5 +77,6 @@ db.exit()
 
 TODO:
 - [ ] Finish Expression tests
+- [ ] Complete Expression docstrings
 - [ ] Add test for tables created after init
 - [x] Add setup.py file

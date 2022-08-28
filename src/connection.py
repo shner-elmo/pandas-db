@@ -60,8 +60,9 @@ class DataBase:
 
     def __enter__(self) -> 'DataBase':
         """
+        Return the instance of DataBase
 
-        :return:
+        :return: self
         """
         return self
 
@@ -71,7 +72,7 @@ class DataBase:
         :param exc_type:
         :param exc_val:
         :param exc_tb:
-        :return:
+        :return: None
         """
         self.exit()
 
@@ -96,7 +97,7 @@ class DataBase:
         Get Table object for given table_name
 
         :param item: str, table name
-        :raise: ValueError if table name is not valid
+        :raise: KeyError if key not found
         :return: Table
         """
         return self._get_table(item)
@@ -105,8 +106,8 @@ class DataBase:
         """
 
         :param item:
-        :raise: ValueError if table name is not valid
-        :return:
+        :raise: AttributeError if attribute not found
+        :return: Table
         """
         return self._get_table(item)
 
