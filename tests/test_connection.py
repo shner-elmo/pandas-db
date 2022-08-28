@@ -1,3 +1,5 @@
+from pandas import DataFrame
+
 from src import DataBase
 from src.table import Table
 from src.exceptions import InvalidTableError
@@ -60,6 +62,26 @@ class TestConnection(unittest.TestCase):
         out = self.db.get_columns(self.db.tables[0])
         self.assertEqual(type(out), list)
         self.assertGreaterEqual(len(out), MIN_TABLES)
+
+    def test_query(self):
+        self.assertEqual(MAIN_DATABASE, '../data/forestation.db',
+                         msg="This test works only on this specific DataBase (forestation.db)")
+        query = """
+        SELECT * FROM forest_area
+        JOIN regions
+        ON regions.country_code = forest_area.country_code
+        AND regions.country_name = forest_area.country_name"""
+
+        df = self.db.query(sql_query=query)
+        self.assertIsInstance(df, DataFrame)
+
+        table_cols = self.db.forest_area.columns + self.db.regions.columns
+        self.assertEqual(len(df.columns), len(table_cols))
+        self.assertFalse(df.columns.has_duplicates)
+        self.assertTrue(all(x in df.columns for x in table_cols))
+        renamed_cols = ['country_code', 'country_name', 'year', 'forest_area_sqkm',
+                        'country_name_2', 'country_code_2', 'region', 'income_group']
+        self.assertEqual(df.columns.to_list(), renamed_cols)
 
     def test_context_manager(self):
         with DataBase(MAIN_DATABASE) as data_base:

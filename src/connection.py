@@ -1,3 +1,5 @@
+from pandas import DataFrame
+
 import sqlite3
 import warnings
 
@@ -57,6 +59,52 @@ class DataBase:
 
         with self.conn as cursor:
             return [x[1] for x in cursor.execute(f"PRAGMA table_info('{table_name}')")]
+
+    @staticmethod
+    def _rename_duplicate_cols(columns: list) -> list:
+        """
+        for each duplicated column it will add a number as the suffix
+
+        ex: ['a', 'b', 'c',  'a', 'b', 'b'] -> ['a', 'b', 'c',  'a_2', 'b_2', 'b_3']
+
+        :param columns: DataFrame
+        :return: list
+        """
+        new_cols = []
+        prev_cols = []  # previously iterated columns in for loop
+
+        for col in columns:
+            prev_cols.append(col)
+            count = prev_cols.count(col)
+
+            if count > 1:
+                new_cols.append(f'{col}_{count}')
+            else:
+                new_cols.append(col)
+        return new_cols
+
+    def query(self, sql_query: str, rename_duplicates: bool = True) -> DataFrame:
+        """
+        Return a DataFrame with the query results
+
+        Returns a DatFrame with the results of a given query,
+        if there are columns with duplicated names it will add a number at the end, for ex:
+        ['a', 'b', 'c',  'a', 'b', 'b'] -> ['a', 'b', 'c',  'a_2', 'b_2', 'b_3']
+
+        :param sql_query: str, SQL query
+        :param rename_duplicates: bool, default: True
+        :return: DataFrame
+        """
+        with self.conn as cursor:
+            data = cursor.execute(sql_query)
+
+        cols = [x[0] for x in data.description]
+
+        duplicates = len(set(cols)) != len(cols)
+        if duplicates and rename_duplicates:
+            cols = self._rename_duplicate_cols(cols)
+
+        return DataFrame(data=data, columns=cols)
 
     def __enter__(self) -> 'DataBase':
         """
