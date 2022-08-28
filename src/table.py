@@ -272,6 +272,17 @@ class Table:
         with self.conn as cursor:
             yield from cursor.execute(self.query)
 
+    def _get_col(self, column: str) -> Column:
+        """
+
+        :param column: column-name
+        :return: Column
+        :raise: InvalidColumnError
+        """
+        if column not in self.columns:
+            raise InvalidColumnError(f'Column must be one of the following: {", ".join(self.columns)}')
+        return getattr(self, column)
+
     def __getitem__(self, item: str) -> Column:
         """
         Get column object for given column name
