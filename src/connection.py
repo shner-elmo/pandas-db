@@ -100,7 +100,10 @@ class DataBase:
         :raise: KeyError if key not found
         :return: Table
         """
-        return self._get_table(item)
+        try:
+            return self._get_table(item)
+        except InvalidTableError:
+            raise KeyError
 
     def __getattr__(self, item) -> Table:
         """
@@ -109,7 +112,10 @@ class DataBase:
         :raise: AttributeError if attribute not found
         :return: Table
         """
-        return self._get_table(item)
+        try:
+            return self._get_table(item)
+        except InvalidTableError:
+            raise AttributeError
 
     def __str__(self) -> str:
         """ Get the string representation of the class instance """
