@@ -116,6 +116,7 @@ class DataBase:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """
+        Safely close the Database connection
 
         :param exc_type:
         :param exc_val:
@@ -155,6 +156,7 @@ class DataBase:
 
     def __getattr__(self, item: str) -> Table:
         """
+        Get Table object for given table_name
 
         :param item:
         :raise: AttributeError if attribute not found

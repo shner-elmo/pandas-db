@@ -62,6 +62,53 @@ class TestColumn(unittest.TestCase):
 
         data = self.column.data(5)
         self.assertEqual(len(data), 5)
+        
+    def test_iloc(self):
+        self.assertGreaterEqual(len(self.column), 5,
+                                msg='First table must have at least 5 rows to complete this test')
+        out = self.column.iloc(0)
+        self.assertIsInstance(out, (str, int, float))
+
+        index = []
+        self.assertRaisesRegex(
+            TypeError,
+            f'Index must be of type int, not: {str(list)}',
+            self.column.iloc, index
+        )
+        index = 32.32
+        self.assertRaisesRegex(
+            TypeError,
+            f'Index must be of type int, not: {str(float)}',
+            self.column.iloc, index
+        )
+
+        index = self.column.len
+        self.assertRaisesRegex(
+            IndexError,
+            'Given index is out of range',
+            self.column.iloc, index
+        )
+
+        index = (self.column.len + 1) * -1  # to convert to negative
+        self.assertRaisesRegex(
+            IndexError,
+            'Given index is out of range',
+            self.column.iloc, index
+        )
+
+        last_elem_idx = self.column.len - 1
+        self.assertEqual(
+            self.column.iloc(last_elem_idx),
+            self.column.iloc(-1))
+
+        # assert not raises error
+        self.column.iloc(self.column.len - 1)
+        self.column.iloc(self.column.len * -1)
+        self.column.iloc(0)
+        self.column.iloc(1)
+        self.column.iloc(3)
+        self.column.iloc(-1)
+        self.column.iloc(-3)
 
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)

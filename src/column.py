@@ -53,6 +53,25 @@ class Column:
                 return [x[0] for x in cursor.execute(self.query + f' LIMIT {limit}')]
             return [x[0] for x in cursor.execute(self.query)]
 
+    def iloc(self, index: int) -> str | int | float:
+        """
+        Get value from given index position, index must be of type int
+
+        :param index: int, positive or positive
+        :return: str, int, or float
+        """
+        if not isinstance(index, int):
+            raise TypeError(f'Index must be of type int, not: {type(index)}')
+
+        if index < 0:
+            index = len(self) + index
+
+        for idx, val in enumerate(self):
+            if idx == index:
+                return val
+
+        raise IndexError('Given index is out of range')
+
     def __iter__(self) -> Generator:
         """ Yield values from column """
         with self.conn as cursor:

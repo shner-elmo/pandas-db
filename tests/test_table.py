@@ -96,6 +96,54 @@ class TestTable(unittest.TestCase):
             self.assertIsInstance(data, list)
             self.assertEqual(len(data), 5)
 
+    def test_iloc(self):
+        self.assertGreaterEqual(len(self.table), 5,
+                                msg='First table must have at least 5 rows to complete this test')
+        out = self.table.iloc(0)
+        self.assertIsInstance(out, tuple)
+        self.assertEqual(len(out), len(self.table.columns))
+
+        index = []
+        self.assertRaisesRegex(
+            TypeError,
+            f'Index must be of type int, not: {str(list)}',
+            self.table.iloc, index
+        )
+        index = 32.32
+        self.assertRaisesRegex(
+            TypeError,
+            f'Index must be of type int, not: {str(float)}',
+            self.table.iloc, index
+        )
+
+        index = self.table.len
+        self.assertRaisesRegex(
+            IndexError,
+            'Given index is out of range',
+            self.table.iloc, index
+        )
+
+        index = (self.table.len + 1) * -1  # to convert to negative
+        self.assertRaisesRegex(
+            IndexError,
+            'Given index is out of range',
+            self.table.iloc, index
+        )
+
+        last_row_idx = self.table.len - 1
+        self.assertEqual(
+            self.table.iloc(last_row_idx),
+            self.table.iloc(-1))
+
+        # assert not raises error
+        self.table.iloc(self.table.len - 1)
+        self.table.iloc(self.table.len * -1)
+        self.table.iloc(0)
+        self.table.iloc(1)
+        self.table.iloc(3)
+        self.table.iloc(-1)
+        self.table.iloc(-3)
+
     def test_iter(self):
         self.assertIsInstance(iter(self.table), Generator)
 
