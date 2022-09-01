@@ -5,6 +5,7 @@ from typing import Generator
 
 from .exceptions import InvalidColumnError
 from .column import Column
+from .indexloc import IndexLoc
 
 
 class Table:
@@ -66,24 +67,14 @@ class Table:
         for col in self.columns:
             yield col, getattr(self, col)
 
-    def iloc(self, index: int) -> tuple:
+    @property
+    def iloc(self) -> IndexLoc:
         """
         Get row from given index, index must be of type int
 
-        :param index: int, positive or positive
-        :return: tuple
+        :return: tuple or list of tuples
         """
-        if not isinstance(index, int):
-            raise TypeError(f'Index must be of type int, not: {type(index)}')
-
-        if index < 0:
-            index = len(self) + index
-
-        for idx, tup in enumerate(self):
-            if idx == index:
-                return tup
-
-        raise IndexError('Given index is out of range')
+        return IndexLoc(it=iter(self), length=len(self))
 
     def __iter__(self) -> Generator:
         """
