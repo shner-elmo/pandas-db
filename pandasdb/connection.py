@@ -152,7 +152,7 @@ class DataBase:
         try:
             return self._get_table(item)
         except InvalidTableError:
-            raise KeyError(f'No such Table: {item}, must be one of the following: {", ".join(self.table)}')
+            raise KeyError(f'No such Table: {item}, must be one of the following: {", ".join(self.tables)}')
 
     def __getattr__(self, attr: str) -> Table:
         """

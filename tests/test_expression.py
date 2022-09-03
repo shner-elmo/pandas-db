@@ -1,9 +1,9 @@
 import unittest
 
-from src import DataBase
-from src.table import Table
-from src.column import Column
-from src.expression import Expression
+from pandasdb import DataBase
+from pandasdb.table import Table
+from pandasdb.column import Column
+from pandasdb.expression import Expression # TODO remove import ?
 
 DB_FILE = '../data/forestation.db'
 

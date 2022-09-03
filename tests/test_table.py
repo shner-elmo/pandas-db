@@ -3,11 +3,11 @@ from pandas import DataFrame
 import unittest
 from collections.abc import Generator
 
-from src import DataBase
-from src.table import Table
-from src.column import Column
-from src.indexloc import IndexLoc
-from src.exceptions import InvalidColumnError
+from pandasdb import DataBase
+from pandasdb.table import Table
+from pandasdb.column import Column
+from pandasdb.indexloc import IndexLoc
+from pandasdb.exceptions import InvalidColumnError
 
 
 DB_FILE = '../data/forestation.db'

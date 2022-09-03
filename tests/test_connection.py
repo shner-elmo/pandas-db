@@ -1,8 +1,8 @@
 from pandas import DataFrame
 
-from src import DataBase
-from src.table import Table
-from src.exceptions import InvalidTableError
+from pandasdb import DataBase
+from pandasdb.table import Table
+from pandasdb.exceptions import InvalidTableError
 
 import unittest
 import sqlite3

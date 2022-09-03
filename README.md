@@ -4,7 +4,7 @@
 
 To instantiate the connection: 
 ```python
-from src import DataBase
+from pandasdb import DataBase
 db = DataBase(db_path='data/forestation.db')
 ```
 
