@@ -27,7 +27,7 @@ class DataBase:
 
     def exit(self) -> None:
         """
-        Close DataBase connection, this method should be called before closing the app
+        Close DataBase connection, this should be called when you're done using the connection
 
         :return: None
         """
@@ -152,20 +152,20 @@ class DataBase:
         try:
             return self._get_table(item)
         except InvalidTableError:
-            raise KeyError
+            raise KeyError(f'No such Table: {item}, must be one of the following: {", ".join(self.table)}')
 
-    def __getattr__(self, item: str) -> Table:
+    def __getattr__(self, attr: str) -> Table:
         """
         Get Table object for given table_name
 
-        :param item:
+        :param attr:
         :raise: AttributeError if attribute not found
         :return: Table
         """
         try:
-            return self._get_table(item)
+            return self._get_table(attr)
         except InvalidTableError:
-            raise AttributeError
+            raise AttributeError(f'No such attribute: {attr}')
 
     def __str__(self) -> str:
         """ Get the string representation of the class instance """
