@@ -6,6 +6,7 @@ from collections.abc import Generator
 from src import DataBase
 from src.table import Table
 from src.column import Column
+from src.indexloc import IndexLoc
 from src.exceptions import InvalidColumnError
 
 
@@ -45,7 +46,7 @@ class TestTable(unittest.TestCase):
 
     def test_len(self):
         with self.table.conn as cursor:
-            rows = len(cursor.execute(self.table.query).fetchall())
+            rows = len(cursor.execute(self.table._query).fetchall())
 
         self.assertIsInstance(self.table.len, int)
         self.assertNotEqual(rows, 0)
@@ -54,7 +55,7 @@ class TestTable(unittest.TestCase):
 
     def test_shape(self):
         with self.table.conn as cursor:
-            first_row = next(cursor.execute(self.table.query))
+            first_row = next(cursor.execute(self.table._query))
 
         shape = self.table.len, len(first_row)
         self.assertEqual(self.table.shape, shape)
@@ -66,7 +67,7 @@ class TestTable(unittest.TestCase):
         self.assertEqual(list(df.columns), self.table.columns)
 
         with self.table.conn as cursor:
-            db_first_row = cursor.execute(self.table.query).fetchone()
+            db_first_row = cursor.execute(self.table._query).fetchone()
 
         df_first_row = tuple(df.iloc[0])
         self.assertEqual(df_first_row, db_first_row)
@@ -97,8 +98,15 @@ class TestTable(unittest.TestCase):
             self.assertEqual(len(data), 5)
 
     def test_iloc(self):
-        self.assertGreaterEqual(len(self.table), 5,
-                                msg='First table must have at least 5 rows to complete this test')
+        """
+        Test all three ways to get an index slice: int, list, and slice
+        """
+        self.assertGreaterEqual(len(self.table), 30,
+                                msg='First table must have at least 30 rows to complete this test')
+
+        out = self.table.iloc
+        self.assertIsInstance(out, IndexLoc)
+
         out = self.table.iloc[0]
         self.assertIsInstance(out, tuple)
         self.assertEqual(len(out), len(self.table.columns))
@@ -144,19 +152,13 @@ class TestTable(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
-        index = {}
-        self.assertRaisesRegex(
-            TypeError,
-            f'Index must be of type: int, list, or slice, not: {str(dict)}',
-            self.table.iloc.__getitem__, index
-        )
-
-        index = 32.32
-        self.assertRaisesRegex(
-            TypeError,
-            f'Index must be of type: int, list, or slice, not: {str(float)}',
-            self.table.iloc.__getitem__, index
-        )
+        types = [dict(), set(), tuple(), 3.32, '3.32']
+        for i in types:
+            self.assertRaisesRegex(
+                TypeError,
+                f'Index must be of type: int, list, or slice, not: {type(i)}',
+                self.table.iloc.__getitem__, i
+            )
 
         index = self.table.len
         self.assertRaisesRegex(

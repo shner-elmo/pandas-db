@@ -37,7 +37,7 @@ class TestColumn(unittest.TestCase):
             self.assertGreater(length, 0)
 
             with self.db.conn as cursor:
-                n_rows = len(cursor.execute(self.table.query).fetchall())
+                n_rows = len(cursor.execute(self.table._query).fetchall())
 
             self.assertEqual(n_rows, length)
 
@@ -48,7 +48,7 @@ class TestColumn(unittest.TestCase):
         self.assertEqual(out.name, self.column._name)
 
         with self.db.conn as cursor:
-            query = next(cursor.execute(self.column.query))[0]  # returns tuple, ex: ('AMD',)
+            query = next(cursor.execute(self.column._query))[0]  # returns tuple, ex: ('AMD',)
         ser = out.iloc[0]
         col = next(iter(self.column))
 
@@ -62,59 +62,83 @@ class TestColumn(unittest.TestCase):
 
         data = self.column.data(5)
         self.assertEqual(len(data), 5)
-        
-    def test_iloc(self):
-        self.assertGreaterEqual(len(self.column), 5,
-                                msg='First table must have at least 5 rows to complete this test')
-        out = self.column.iloc(0)
-        self.assertIsInstance(out, (str, int, float))
 
-        index = []
-        self.assertRaisesRegex(
-            TypeError,
-            f'Index must be of type int, not: {str(list)}',
-            self.column.iloc, index
-        )
-        index = 32.32
-        self.assertRaisesRegex(
-            TypeError,
-            f'Index must be of type int, not: {str(float)}',
-            self.column.iloc, index
-        )
+    def test_iloc(self):
+        """
+        Test all three ways to get an index slice: int, list, and slice        
+        """
+        self.assertGreaterEqual(len(self.table), 30,
+                                msg='First table must have at least 30 rows to complete this test')
+
+        out = self.column.iloc[0]
+        self.assertNotIsInstance(out, (list, tuple))
+
+        out = self.column.iloc[3]
+        self.assertNotIsInstance(out, (list, tuple))
+
+        out = self.column.iloc[-1]
+        self.assertNotIsInstance(out, (list, tuple))
+
+        last_row_idx = len(self.column) - 1
+        self.assertEqual(self.column.iloc[last_row_idx], self.column.iloc[-1])
+
+        lst = [3, 5, 3, -1]
+        out = self.column.iloc[lst]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), len(lst))
+
+        lst = [3, -1, 5, 3, -1]
+        out = self.column.iloc[lst]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), len(lst))
+
+        out = self.column.iloc[:]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), len(self.column))
+
+        out = self.column.iloc[:5]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 5)
+
+        out = self.column.iloc[3:]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), len(self.column) - 3)
+
+        out = self.column.iloc[3:8]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 5)
+
+        out = self.column.iloc[2:24:2]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 11)
+
+        types = [dict(), set(), tuple(), 3.32, '3.32']
+        for i in types:
+            self.assertRaisesRegex(
+                TypeError,
+                f'Index must be of type: int, list, or slice, not: {type(i)}',
+                self.column.iloc.__getitem__, i
+            )
 
         index = self.column.len
         self.assertRaisesRegex(
             IndexError,
-            'Given index is out of range',
-            self.column.iloc, index
+            'Given index out of range',
+            self.column.iloc.__getitem__, index
         )
 
         index = (self.column.len + 1) * -1  # to convert to negative
         self.assertRaisesRegex(
             IndexError,
-            'Given index is out of range',
-            self.column.iloc, index
+            'Given index out of range',
+            self.column.iloc.__getitem__, index
         )
-
-        last_elem_idx = self.column.len - 1
-        self.assertEqual(
-            self.column.iloc(last_elem_idx),
-            self.column.iloc(-1))
-
-        # assert not raises error
-        self.column.iloc(self.column.len - 1)
-        self.column.iloc(self.column.len * -1)
-        self.column.iloc(0)
-        self.column.iloc(1)
-        self.column.iloc(3)
-        self.column.iloc(-1)
-        self.column.iloc(-3)
 
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)
 
         for val, _ in zip(self.column, range(5)):
-            self.assertNotIsInstance(val, tuple)
+            self.assertNotIsInstance(val, (tuple, list))
 
     def test_hash(self):
         self.assertIsInstance(hash(self.column), int)
@@ -142,6 +166,7 @@ class TestColumnLogicalOp(unittest.TestCase):
         self.assertIsInstance(exp, Expression)
         self.assertEqual(exp.query, self.col + f' > 12.32 ')
 
+    # TODO: finish Expression tests
     def test_ge(self):
         pass
 

@@ -15,7 +15,7 @@ class Table:
     def __init__(self, conn: sqlite3.Connection, name: str) -> None:
         self.conn = conn
         self._name = name
-        self.query = f'SELECT * FROM {self._name}'
+        self._query = f'SELECT * FROM {self._name}'
 
         for col in self.columns:
             setattr(self, col, Column(conn=self.conn, table_name=self._name, col_name=col))
@@ -33,7 +33,8 @@ class Table:
         """
         Return amount of rows in the table
         """
-        return sum(1 for _ in self)
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT COUNT(*) FROM {self._name}').fetchone()[0]
 
     @property
     def shape(self) -> tuple:
@@ -46,7 +47,7 @@ class Table:
         """
         Return table as a Pandas DataFrame
         """
-        return DataFrame(data=self, columns=self.columns)
+        return DataFrame(data=iter(self), columns=self.columns)
 
     def data(self, limit: int = None) -> list:
         """
@@ -57,8 +58,8 @@ class Table:
         """
         with self.conn as cursor:
             if limit:
-                return cursor.execute(self.query + f' LIMIT {limit}').fetchall()
-            return cursor.execute(self.query).fetchall()
+                return cursor.execute(self._query + f' LIMIT {limit}').fetchall()
+            return cursor.execute(self._query).fetchall()
 
     def items(self) -> Generator:
         """
@@ -70,7 +71,14 @@ class Table:
     @property
     def iloc(self) -> IndexLoc:
         """
-        Get row from given index, index must be of type int
+        Get data by: index, list, or slice
+
+        Getitem supports three ways of indexing table rows:
+        1) Singular Integer, ex: IndexIloc[0], IndexIloc[32], or with negative: IndexIloc[-12]
+        2) Passing a list of integers, ex: IndexIloc[[1, 22, 4, 3, 17, 38]], IndexIloc[[1, -4, 17, 22, 38, -4, -1]]
+        4) Passing Slice, ex: IndexIloc[:10], IndexIloc[2:8], IndexIloc[2:24:2]
+
+        The return type will be a list for multiple items and a tuple for single items
 
         :return: tuple or list of tuples
         """
@@ -81,7 +89,7 @@ class Table:
         Yield rows from cursor
         """
         with self.conn as cursor:
-            yield from cursor.execute(self.query)
+            yield from cursor.execute(self._query)
 
     def _get_col(self, column: str) -> Column:
         """
@@ -105,20 +113,20 @@ class Table:
         try:
             return self._get_col(item)
         except InvalidColumnError:
-            raise KeyError
+            raise KeyError(f'No such Column: {item}, must be one of the following: {", ".join(self.columns)}')
 
-    def __getattr__(self, item: str) -> Column:
+    def __getattr__(self, attr: str) -> Column:
         """
         Get column object for given column name
 
-        :param item: str, column-name
+        :param attr: str, column-name
         :return: Column
         :raise: AttributeError
         """
         try:
-            return self._get_col(item)
+            return self._get_col(attr)
         except InvalidColumnError:
-            raise AttributeError
+            raise AttributeError(f'No such attribute: {attr}')
 
     def __len__(self) -> int:
         """ Return amount of rows """

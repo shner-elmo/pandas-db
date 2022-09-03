@@ -4,6 +4,7 @@ import sqlite3
 from typing import Generator
 
 from .expression import Expression
+from .indexloc import IndexLoc
 
 
 class Column:
@@ -14,7 +15,7 @@ class Column:
         self.conn = conn
         self._table = table_name
         self._name = col_name
-        self.query = f'SELECT {col_name} FROM {table_name}'
+        self._query = f'SELECT {col_name} FROM {table_name}'
 
     @property
     def type(self) -> str:
@@ -31,13 +32,14 @@ class Column:
         """
         Get the amount of rows/ cells in the column
         """
-        return sum(1 for _ in self)
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT COUNT(*) FROM {self._table}').fetchone()[0]
 
     def to_series(self) -> Series:
         """
         Return column as a Pandas Series
         """
-        return Series(data=self, name=self._name)
+        return Series(data=iter(self), name=self._name)
 
     def data(self, limit: int = None) -> list:
         """
@@ -50,32 +52,30 @@ class Column:
         """
         with self.conn as cursor:
             if limit:
-                return [x[0] for x in cursor.execute(self.query + f' LIMIT {limit}')]
-            return [x[0] for x in cursor.execute(self.query)]
+                return [x[0] for x in cursor.execute(self._query + f' LIMIT {limit}')]
+            return [x[0] for x in cursor.execute(self._query)]
 
-    def iloc(self, index: int) -> str | int | float:
+    @property
+    def iloc(self) -> IndexLoc:
         """
-        Get value from given index position, index must be of type int
+        Get data by: index, list, or slice
 
-        :param index: int, positive or positive
-        :return: str, int, or float
+        Getitem supports three ways of indexing the iterable:
+        1) Singular Integer, ex: IndexIloc[0], IndexIloc[32], or with negative: IndexIloc[-12]
+        2) Passing a list of integers, ex: IndexIloc[[1, 22, 4, 3, 17, 38]], IndexIloc[[1, -4, 17, 22, 38, -4, -1]]
+        4) Passing Slice, ex: IndexIloc[:10], IndexIloc[2:8], IndexIloc[2:24:2]
+
+        The return type will be a list for multiple items,
+        and one of the following: str, int, or float. Depending on the data type of the column
+
+        :return: list, str, int, or float
         """
-        if not isinstance(index, int):
-            raise TypeError(f'Index must be of type int, not: {type(index)}')
-
-        if index < 0:
-            index = len(self) + index
-
-        for idx, val in enumerate(self):
-            if idx == index:
-                return val
-
-        raise IndexError('Given index is out of range')
+        return IndexLoc(it=iter(self), length=len(self))
 
     def __iter__(self) -> Generator:
         """ Yield values from column """
         with self.conn as cursor:
-            for i in cursor.execute(self.query):
+            for i in cursor.execute(self._query):
                 yield i[0]
 
     def __len__(self) -> int:
