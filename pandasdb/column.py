@@ -72,6 +72,10 @@ class Column:
         """
         return IndexLoc(it=iter(self), length=len(self))
 
+    def __getitem__(self, item: int | slice | list):  # -> list | str | int | float
+        """ Return index slice """
+        return self.iloc[item]
+
     def __iter__(self) -> Generator:
         """ Yield values from column """
         with self.conn as cursor:

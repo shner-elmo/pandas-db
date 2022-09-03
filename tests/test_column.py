@@ -134,6 +134,25 @@ class TestColumn(unittest.TestCase):
             self.column.iloc.__getitem__, index
         )
 
+    def test_getitem(self):
+        """
+        There are two ways of getting a slice from a Column object;
+        from the iloc property, ex: Column.iloc[-5], or: Column[-5]
+        """
+        self.test_iloc()
+
+        out = self.column[-1]
+        self.assertNotIsInstance(out, (list, tuple))
+
+        lst = [3, -1, 5, 3, -1]
+        out = self.column[lst]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), len(lst))
+
+        out = self.column[2:24:2]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 11)
+
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)
 
