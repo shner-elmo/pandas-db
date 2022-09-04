@@ -1,7 +1,7 @@
 from pandas import DataFrame
 
 import sqlite3
-from typing import Generator
+from typing import Generator, Callable
 
 from .exceptions import InvalidColumnError
 from .column import Column
@@ -67,6 +67,28 @@ class Table:
         """
         for col in self.columns:
             yield col, getattr(self, col)
+
+    def applymap(self, func: Callable, *, ignore_na: bool = False) -> Generator:
+        """
+        Apply function on each cell in the table
+
+        example:
+        db = DataBase(db_path='data/forestation.db')
+        table = db.regions.applymap(lambda x: len(x) if isinstance(x, str) else None)
+        for row in table:
+            print(row)
+
+        (11, 3, 26, 10)
+        (6, 3, 18, 19)
+        (8, 3, 18, 10)
+        (5, 3, 5, None)
+
+        :param func: Callable
+        :param ignore_na: bool, default: False
+        :return: Generator
+        """
+        for row in self:
+            yield tuple(cell if cell is None and ignore_na is True else func(cell) for cell in row)
 
     @property
     def iloc(self) -> IndexLoc:
