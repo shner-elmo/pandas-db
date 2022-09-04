@@ -35,6 +35,54 @@ class Column:
         with self.conn as cursor:
             return cursor.execute(f'SELECT COUNT(*) FROM {self._table}').fetchone()[0]
 
+    @property
+    def min(self):
+        """
+        Get the minimum value of the column
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT MIN({self._name}) FROM {self._table}').fetchone()[0]
+
+    @property
+    def max(self):
+        """
+        Get the max value of the column
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT MAX({self._name}) FROM {self._table}').fetchone()[0]
+
+    @property
+    def sum(self):
+        """
+        Get the sum of all values within the column
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT SUM({self._name}) FROM {self._table}').fetchone()[0]
+
+    @property
+    def avg(self):
+        """
+        Get the max value of the column
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT AVG({self._name}) FROM {self._table}').fetchone()[0]
+
+    @property
+    def median(self):
+        """
+        Get the median value of the column
+        """
+        query = f"""
+        SELECT AVG(avg_col) FROM (
+            SELECT {self._name} AS avg_col FROM {self._table}
+            ORDER BY 1
+            LIMIT 2 - (SELECT COUNT(*) FROM {self._table}) % 2
+            OFFSET (SELECT (COUNT(*) - 1) / 2 FROM {self._table})
+        )
+        """
+        with self.conn as cursor:
+            return cursor.execute(query).fetchone()[0]  # test SELECT COUNT(*) vs SELECT COUNT(1)
+
     def to_series(self) -> Series:
         """
         Return column as a Pandas Series
