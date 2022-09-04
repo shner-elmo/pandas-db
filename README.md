@@ -1,6 +1,11 @@
-# db wrapper
+# Pandas-DB
 
-### A wrapper for SQLite3
+### A lightweight object for analyzing data directly from a Database without having to load anything onto memory
+
+You can now install this package directly from [pypi](https://pypi.org/project/pandasdb2/)
+```
+pip install pandasdb2
+```
 
 To instantiate the connection: 
 ```python

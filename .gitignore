@@ -2,4 +2,5 @@ __pycache__/
 .idea/
 v2.1
 notes.txt
-build
+dist
+pandasdb2.egg-info
