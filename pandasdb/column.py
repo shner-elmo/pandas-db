@@ -1,7 +1,7 @@
 from pandas import Series
 
 import sqlite3
-from typing import Generator
+from typing import Generator, Callable
 
 from .expression import Expression
 from .indexloc import IndexLoc
@@ -54,6 +54,31 @@ class Column:
             if limit:
                 return [x[0] for x in cursor.execute(self._query + f' LIMIT {limit}')]
             return [x[0] for x in cursor.execute(self._query)]
+
+    def apply(self, func: Callable, *, ignore_na: bool = False) -> Generator:
+        """
+        Apply function on each cell in the column
+
+        example:
+        db = DataBase('data/parch-and-posey.sql')
+        column = db.accounts.primary_poc.apply(lambda x: x.split()[0])
+        for first_name in column:
+            print(first_name)
+
+        'Tamara'
+        'Sung'
+        'Jodee'
+        'Serafina'
+
+        :param func: Callable
+        :param ignore_na: bool, default: False
+        :return: Generator
+        """
+        for cell in self:
+            if cell is None and ignore_na:
+                yield cell
+            else:
+                yield func(cell)
 
     @property
     def iloc(self) -> IndexLoc:
