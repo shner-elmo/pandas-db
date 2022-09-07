@@ -170,7 +170,7 @@ class Column:
         if its text data:
         {'len', 'count', 'min', 'max', 'mode'}
 
-        :return
+        :return dict
         """
         if self.data_is_numeric():
             return {
