@@ -68,7 +68,7 @@ class Table:
         for col in self.columns:
             yield col, getattr(self, col)
 
-    def applymap(self, func: Callable, *, ignore_na: bool = False) -> Generator:
+    def applymap(self, func: Callable, *, ignore_na: bool = False, args: tuple = tuple(), **kwargs) -> Generator:
         """
         Apply function on each cell in the table
 
@@ -85,10 +85,12 @@ class Table:
 
         :param func: Callable
         :param ignore_na: bool, default: False
+        :param args: tuple, args to pass to the function
+        :param kwargs: keyword args to pass to the callable
         :return: Generator
         """
         for row in self:
-            yield tuple(cell if cell is None and ignore_na is True else func(cell) for cell in row)
+            yield tuple(cell if cell is None and ignore_na is True else func(cell, *args, **kwargs) for cell in row)
 
     @property
     def iloc(self) -> IndexLoc:
