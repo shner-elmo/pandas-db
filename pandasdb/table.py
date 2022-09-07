@@ -115,8 +115,9 @@ class Table:
 
     def _get_col(self, column: str) -> Column:
         """
+        Get column object
 
-        :param column: column-name
+        :param column:str, column name
         :return: Column
         :raise: InvalidColumnError
         """

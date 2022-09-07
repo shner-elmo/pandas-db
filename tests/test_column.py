@@ -1,4 +1,5 @@
 from pandas import Series
+import numpy as np
 
 import unittest
 from collections.abc import Generator
@@ -27,8 +28,25 @@ class TestColumn(unittest.TestCase):
     def test_type(self):
         for name, col in self.table.items():
             out = col.type
+            self.assertIsInstance(out, type)
+            self.assertIn(out, (str, int, float))
+
+    def test_sql_type(self):
+        for name, col in self.table.items():
+            out = col.sql_type
             self.assertIsInstance(out, str)
             self.assertGreater(len(out), 0)
+
+    def test_data_is_numeric(self):
+        for name, col in self.table.items():
+            is_numeric = col.data_is_numeric()
+            self.assertIsInstance(is_numeric, bool)
+
+            first_val = next(iter(col))
+            if is_numeric:
+                self.assertIsInstance(first_val, (int, float))
+            else:
+                self.assertIsInstance(first_val, str)
 
     def test_len(self):
         for name, col in self.table.items():
@@ -40,6 +58,136 @@ class TestColumn(unittest.TestCase):
                 n_rows = len(cursor.execute(self.table._query).fetchall())
 
             self.assertEqual(n_rows, length)
+            self.assertEqual(col.len, col.count() + col.na_count())
+
+    def test_count(self):
+        for name, col in self.table.items():
+            out = col.count()
+            self.assertIsInstance(out, int)
+            self.assertGreater(out, 0)
+            self.assertEqual(col.count() + col.na_count(), col.len)
+
+    def test_na_count(self):
+        for name, col in self.table.items():
+            out = col.na_count()
+            self.assertIsInstance(out, int)
+            self.assertEqual(col.na_count() + col.count(), col.len)
+
+    def test_min(self):
+        for name, col in self.table.items():
+            col_min = col.min()
+            ser_min = col.to_series().min()
+            self.assertEqual(ser_min, col_min)
+
+    def test_max(self):
+        for name, col in self.table.items():
+            col_max = col.max()
+            ser_max = col.to_series().max()
+            self.assertEqual(ser_max, col_max)
+
+    def test_sum(self):
+        for name, col in self.table.items():
+            if col.data_is_numeric():
+                col_sum = col.sum()
+                ser_sum = col.to_series().sum()
+                self.assertAlmostEqual(ser_sum, col_sum, places=4)  # SQLite SUM() rounds to 4
+            else:
+                self.assertRaisesRegex(
+                    TypeError,
+                    f'Cannot get sum for Column of type {col.type}',
+                    col.sum
+                )
+
+    def test_avg(self):
+        for name, col in self.table.items():
+            if col.data_is_numeric():
+                col_avg = col.avg()
+                ser_avg = col.to_series().mean()
+                self.assertAlmostEqual(ser_avg, col_avg, places=4)  # round to 4 for consistency
+            else:
+                self.assertRaisesRegex(
+                    TypeError,
+                    f'Cannot get avg for Column of type {col.type}',
+                    col.avg
+                )
+
+    def test_median(self):
+        for table in self.db.tables:
+            for name, col in self.db[table].items():
+                if col.data_is_numeric():
+                    col_median = col.median()
+                    ser_median = col.to_series().median()
+                    self.assertAlmostEqual(ser_median, col_median, places=4)
+                else:
+                    self.assertRaisesRegex(
+                        TypeError,
+                        f'Cannot get median for Column of type {col.type}',
+                        col.median
+                    )
+
+    def test_mode(self):
+        for name, col in self.table.items():
+            out = col.mode()
+            self.assertIsInstance(out, dict)
+            self.assertGreater(len(out), 0)
+
+            lst = list(out.values())
+            self.assertEqual(lst.count(lst[0]), len(lst))  # assert all values are the same
+
+            if col.type in (str, int):
+                ser_mode = col.to_series().mode().to_dict()
+                # convert to list because type(dict_values) is never equal to type(dict_keys)
+                self.assertEqual(list(ser_mode.values()), list(out.keys()))
+
+    def test_describe(self):
+        for name, col in self.table.items():
+            col_dict = col.describe()
+            ser: Series = col.to_series()
+
+            if col.data_is_numeric():
+                d = {
+                    col_dict['len']: len(ser),
+                    col_dict['count']: ser.count(),
+                    col_dict['min']: ser.min(),
+                    col_dict['max']: ser.max(),
+                    col_dict['sum']: ser.sum(),
+                    col_dict['avg']: ser.mean(),
+                    col_dict['median']: ser.median()
+                }
+            else:
+                d = {
+                    col_dict['len']: len(ser),
+                    col_dict['count']: ser.count(),
+                    col_dict['min']: ser.min(),
+                    col_dict['max']: ser.max(),
+                    col_dict['unique']: len(ser.unique())
+                }
+
+            for key, val in d.items():
+                if isinstance(key, float):
+                    key = round(key, 4)
+                    val = round(val, 4)
+                self.assertEqual(key, val)
+
+    def test_unique(self):
+        for name, col in self.table.items():
+            col_unique = col.unique()
+            ser_unique = col.to_series().unique()
+            self.assertEqual(len(col_unique), len(ser_unique))
+
+            for x, y in zip(col_unique, ser_unique):
+                if x is None:
+                    self.assertTrue(np.isnan(y))
+                else:
+                    self.assertEqual(x, y)
+
+    def test_value_counts(self):
+        for name, col in self.table.items():
+            col_vc = col.value_counts()
+            ser_vc = col.to_series().value_counts().to_dict()
+
+            self.assertEqual(len(col_vc), len(ser_vc))
+            self.assertEqual(col_vc, ser_vc)
 
     def test_to_series(self):
         out = self.column.to_series()
@@ -63,9 +211,43 @@ class TestColumn(unittest.TestCase):
         data = self.column.data(5)
         self.assertEqual(len(data), 5)
 
+    def test_apply(self):
+        for name, col in self.table.items():
+
+            if col.type is int:
+                it = col.apply(lambda x: len(str(x)))
+                for cell in it:
+                    if cell is not None:
+                        self.assertIsInstance(cell, int)
+                        self.assertGreaterEqual(cell, 1)
+
+            elif col.type is float:
+                col1 = col.apply(round, args=(1,))
+                col2 = col.apply(round, ndigits=1)  # test args and kwargs
+
+                for cell1, cell2 in zip(col1, col2):
+                    if cell1 is None:
+                        continue
+
+                    self.assertIsInstance(cell1, float)
+                    self.assertIsInstance(cell2, float)
+                    self.assertEqual(cell1, cell2)
+
+                    decimals = str(cell1).split('.')[-1]
+                    self.assertEqual(len(decimals), 1)
+
+                    decimals = str(cell2).split('.')[-1]
+                    self.assertEqual(len(decimals), 1)
+                    
+            elif col.type is str:
+                it = col.apply(lambda x: x.split()[-1])
+                for cell in it:
+                    if cell is not None:
+                        self.assertNotIn(member=' ', container=cell)
+
     def test_iloc(self):
         """
-        Test all three ways to get an index slice: int, list, and slice        
+        Test all three ways to get an index slice: int, list, and slice
         """
         self.assertGreaterEqual(len(self.table), 30,
                                 msg='First table must have at least 30 rows to complete this test')

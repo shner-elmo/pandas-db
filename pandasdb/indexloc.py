@@ -58,6 +58,7 @@ class IndexLoc:
         :param key: int, list, or slice
         :return:
         """
+        # TODO: get data directly from through SQL and use ORDER BY x DESC for negative indexes
         if not isinstance(key, (int, list, slice)):
             raise TypeError(f'Index must be of type: int, list, or slice, not: {type(key)}')
 

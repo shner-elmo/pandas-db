@@ -59,6 +59,8 @@ class TestTable(unittest.TestCase):
 
         shape = self.table.len, len(first_row)
         self.assertEqual(self.table.shape, shape)
+        print(self.table.shape)
+        self.assertEqual(self.table.shape, self.table.to_df().shape)
 
     def test_to_df(self):
         df = self.table.to_df()
@@ -92,10 +94,21 @@ class TestTable(unittest.TestCase):
 
             # try accessing data for the column
             self.assertIsInstance(col.len, int)
-            self.assertIsInstance(col.type, str)
+            self.assertIsInstance(col.sql_type, str)
             data = col.data(5)
             self.assertIsInstance(data, list)
             self.assertEqual(len(data), 5)
+
+    def test_applymap(self):
+        for table_name in self.db.tables:
+            table = self.db[table_name].applymap(
+                lambda x: len(str(x)) if x is None or type(x) in (str, float) else x)
+
+            for row in table:
+                self.assertIsInstance(row, tuple)
+
+                for item in row:
+                    self.assertIsInstance(item, int)
 
     def test_iloc(self):
         """

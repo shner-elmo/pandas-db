@@ -65,7 +65,7 @@ class DataBase:
         """
         for each duplicated column it will add a number as the suffix
 
-        ex: ['a', 'b', 'c',  'a', 'b', 'b'] -> ['a', 'b', 'c',  'a_2', 'b_2', 'b_3']
+        ex: ['a', 'b', 'c', 'a', 'b', 'b'] -> ['a', 'b', 'c', 'a_2', 'b_2', 'b_3']
 
         :param columns: DataFrame
         :return: list
@@ -87,9 +87,9 @@ class DataBase:
         """
         Return a DataFrame with the query results
 
-        Returns a DatFrame with the results of a given query,
+        Returns a DataFrame with the results of a given query,
         if there are columns with duplicated names it will add a number at the end, for ex:
-        ['a', 'b', 'c',  'a', 'b', 'b'] -> ['a', 'b', 'c',  'a_2', 'b_2', 'b_3']
+        ['a', 'b', 'c', 'a', 'b', 'b'] -> ['a', 'b', 'c', 'a_2', 'b_2', 'b_3']
 
         :param sql_query: str, SQL query
         :param rename_duplicates: bool, default: True

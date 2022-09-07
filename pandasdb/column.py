@@ -1,7 +1,7 @@
 from pandas import Series
 
 import sqlite3
-from typing import Generator, Callable
+from typing import Generator, Callable, Any
 
 from .expression import Expression
 from .indexloc import IndexLoc
@@ -18,74 +18,211 @@ class Column:
         self._query = f'SELECT {col_name} FROM {table_name}'
 
     @property
-    def type(self) -> str:
+    def type(self) -> type:
         """
-        Get column type
+        Get column Python data type, i.e: str, int or float
+
+        :return: type, str | int | float
+        """
+        return type(next(iter(self)))
+
+    @property
+    def sql_type(self) -> str:
+        """
+        Get the column SQL data type as a string
+
+        Return a string with the SQL data type, some of the most common are:
+        TEXT, INTEGER, REAL, FLOAT, TIMESTAMP, BPCHAR, VARCHAR(250), NUMERIC(10,2), etc.
+
+        :return str, e.g., TEXT, INTEGER, REAL...
         """
         with self.conn as cursor:
             for row in cursor.execute(f"PRAGMA table_info('{self._table}')"):
                 if row[1] == self._name:
                     return row[2]
 
+    def data_is_numeric(self) -> bool:
+        """
+        Return True if the column data is of type int or float, else: False
+        """
+        return self.type in (int, float)
+
     @property
     def len(self) -> int:
         """
-        Get the amount of rows/ cells in the column
+        Get the amount of rows/ cells in the column (including None values)
         """
         with self.conn as cursor:
             return cursor.execute(f'SELECT COUNT(*) FROM {self._table}').fetchone()[0]
 
-    @property
-    def min(self):
+    def count(self) -> int:
         """
-        Get the minimum value of the column
+        Get the amount of rows/ cells in the column (excluding None values)
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT COUNT({self._name}) FROM {self._table}').fetchone()[0]
+
+    def na_count(self) -> int:
+        """
+        Get the amount of None values in column
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'SELECT COUNT(*) FROM {self._table} WHERE {self._name} IS NULL').fetchone()[0]
+
+    def min(self) -> int | float | str:
+        """
+        Get the min value of the column
         """
         with self.conn as cursor:
             return cursor.execute(f'SELECT MIN({self._name}) FROM {self._table}').fetchone()[0]
 
-    @property
-    def max(self):
+    def max(self) -> int | float | str:
         """
         Get the max value of the column
         """
         with self.conn as cursor:
             return cursor.execute(f'SELECT MAX({self._name}) FROM {self._table}').fetchone()[0]
 
-    @property
-    def sum(self):
+    def sum(self) -> float:
         """
         Get the sum of all values within the column
+
+        :raise TypeError: if column isn't of type int or float
+        :return float
         """
+        if not self.data_is_numeric():
+            raise TypeError(f'Cannot get sum for Column of type {self.type}')
+
         with self.conn as cursor:
             return cursor.execute(f'SELECT SUM({self._name}) FROM {self._table}').fetchone()[0]
 
-    @property
-    def avg(self):
+    def avg(self) -> float:
         """
-        Get the max value of the column
+        Get the avg value of the column
+
+        :raise TypeError: if column isn't of type int or float
+        :return float
         """
+        if not self.data_is_numeric():
+            raise TypeError(f'Cannot get avg for Column of type {self.type}')
+
         with self.conn as cursor:
             return cursor.execute(f'SELECT AVG({self._name}) FROM {self._table}').fetchone()[0]
 
-    @property
-    def median(self):
+    def median(self) -> float:
         """
         Get the median value of the column
+
+        :raise TypeError: if column isn't of type int or float
+        :return float
+        """
+        if not self.data_is_numeric():
+            raise TypeError(f'Cannot get median for Column of type {self.type}')
+
+        def get_row_by_index(index):
+            q = f"""
+            SELECT {self._name} FROM (
+                SELECT 
+                    {self._name}, 
+                    ROW_NUMBER() OVER(ORDER BY {self._name} DESC) AS row_id  -- DESC to get NULL values last
+                FROM {self._table} 
+            )
+            WHERE row_id == {index}
+            """
+            with self.conn as cur:
+                return cur.execute(q).fetchone()[0]
+
+        count = self.count()
+        if count % 2 == 0:
+            indexes = (count // 2, count // 2 + 1)
+            lst = [get_row_by_index(idx) for idx in indexes]
+            avg = sum(lst) / len(lst)
+            return avg
+        else:
+            idx = count // 2 + 1
+            return get_row_by_index(idx)
+
+    def mode(self) -> dict[Any, int]:
+        """
+        Get the mode/s of the column as a dictionary; {'value': count}
+
+        :return dict
         """
         query = f"""
-        SELECT AVG(avg_col) FROM (
-            SELECT {self._name} AS avg_col FROM {self._table}
-            ORDER BY 1
-            LIMIT 2 - (SELECT COUNT(*) FROM {self._table}) % 2
-            OFFSET (SELECT (COUNT(*) - 1) / 2 FROM {self._table})
+        SELECT {self._name}, COUNT(*) FROM {self._table}
+        GROUP BY 1
+        HAVING COUNT(*) >= (	
+            SELECT COUNT(*) FROM {self._table}
+            GROUP BY {self._name}
+            ORDER BY 1 DESC
+            LIMIT 1
         )
         """
         with self.conn as cursor:
-            return cursor.execute(query).fetchone()[0]  # test SELECT COUNT(*) vs SELECT COUNT(1)
+            return dict(cursor.execute(query))
+
+    def describe(self) -> dict[str, float]:
+        """
+        Get a dictionary with different properties for the column
+
+        if column data is numeric return a dictionary with keys:
+        {'len', 'count', 'min', 'max', 'sum', 'avg', 'median'}
+        if its text data:
+        {'len', 'count', 'min', 'max', 'mode'}
+
+        :return
+        """
+        if self.data_is_numeric():
+            return {
+                'len': self.len,
+                'count': self.count(),
+                'min': self.min(),
+                'max': self.max(),
+                'sum': self.sum(),
+                'avg': self.avg(),
+                'median': self.median()
+            }
+        else:
+            return {
+                'len': self.len,
+                'count': self.count(),
+                'min': self.min(),
+                'max': self.max(),
+                'unique': len(self.unique())
+            }
+
+    def unique(self) -> list:
+        """
+        Get list with unique values
+
+        :return list
+        """
+        with self.conn as cursor:
+            return list(tup[0] for tup in cursor.execute(f'SELECT DISTINCT {self._name} FROM {self._table}'))
+
+    def value_counts(self) -> dict[Any, int]:
+        """
+        Get a dictionary with the count of each value in the Column
+
+        example:
+        column = ['a', 'b', 'c', 'b', 'c', 'b'] -> {'a': 1, 'b': 3, 'c': 2}
+
+        :return: dict
+        """
+        query = f"""
+        SELECT {self._name}, COUNT(*) FROM {self._table}
+        WHERE {self._name} IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1 ASC, 2 DESC
+        """
+        with self.conn as cursor:
+            return dict(cursor.execute(query))
 
     def to_series(self) -> Series:
         """
         Return column as a Pandas Series
+
+        :return Pandas Series
         """
         return Series(data=iter(self), name=self._name)
 
@@ -103,7 +240,7 @@ class Column:
                 return [x[0] for x in cursor.execute(self._query + f' LIMIT {limit}')]
             return [x[0] for x in cursor.execute(self._query)]
 
-    def apply(self, func: Callable, *, ignore_na: bool = False) -> Generator:
+    def apply(self, func: Callable, *, ignore_na: bool = True, args: tuple = tuple(), **kwargs) -> Generator:
         """
         Apply function on each cell in the column
 
@@ -118,15 +255,16 @@ class Column:
         'Jodee'
         'Serafina'
 
+        :param args:
         :param func: Callable
-        :param ignore_na: bool, default: False
+        :param ignore_na: bool, default: True
         :return: Generator
         """
         for cell in self:
             if cell is None and ignore_na:
                 yield cell
             else:
-                yield func(cell)
+                yield func(cell, *args, **kwargs)
 
     @property
     def iloc(self) -> IndexLoc:
