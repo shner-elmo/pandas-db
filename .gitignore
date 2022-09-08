@@ -1,5 +1,7 @@
 __pycache__/
 .idea/
+.vscode/
+.pytest_cache/
 v2.1
 notes.txt
 dist
