@@ -213,7 +213,7 @@ class Column:
         SELECT {self._name}, COUNT(*) FROM {self._table}
         WHERE {self._name} IS NOT NULL
         GROUP BY 1
-        ORDER BY 1 ASC, 2 DESC
+        ORDER BY 2 DESC, 1 ASC
         """
         with self.conn as cursor:
             return dict(cursor.execute(query))
