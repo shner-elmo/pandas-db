@@ -68,10 +68,10 @@ class Table:
         for col in self.columns:
             yield col, getattr(self, col)
 
-    def applymap(self, func: Callable, *, ignore_na: bool = False, args: tuple = tuple(), **kwargs) -> Generator:
+    def applymap(self, func: Callable, *, ignore_na: bool = True, args: tuple = tuple(), **kwargs) -> Generator:
         """
         Apply function on each cell in the table
-
+        
         example:
         db = DataBase(db_path='data/forestation.db')
         table = db.regions.applymap(lambda x: len(x) if isinstance(x, str) else None)
@@ -84,7 +84,7 @@ class Table:
         (5, 3, 5, None)
 
         :param func: Callable
-        :param ignore_na: bool, default: False
+        :param ignore_na: bool, default: True
         :param args: tuple, args to pass to the function
         :param kwargs: keyword args to pass to the callable
         :return: Generator
