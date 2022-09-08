@@ -32,7 +32,7 @@ df2 = db.accounts.to_df()
 ```
 
 
-For the full tutorial click [here](#Now-lets-dive-onto-the-pandasdb-library)
+For the full tutorial click [here](#now-lets-dive-onto-the-pandasdb-library)
 
 ---
 ## Memory Usage
