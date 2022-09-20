@@ -2,14 +2,56 @@ from pandas import DataFrame
 
 import sqlite3
 import warnings
+from typing import Generator
+from threading import Thread
 
-from .utils import load_sql_to_sqlite
+from .utils import load_sql_to_sqlite, rename_duplicate_cols
 from .table import Table
 from .exceptions import FileTypeError, InvalidTableError
+from .cache import Cache
 
 
 class DataBase:
-    def __init__(self, db_path: str) -> None:
+    """
+    A class that represents a database, all the tables will be stored as attributes in the DataBase object,
+    and the columns will be stored as attributes in they're respective tables
+    You can have a look at the README here: https://github.com/shner-elmo/pandas-db/blob/master/README.md
+    """
+    def __init__(self, db_path: str, populate_cache: bool = True, max_item_size: int = 2,
+                 max_dict_size: int = 100, block_till_ready: bool = False) -> None:
+        """
+        Initialize the DataBase object
+
+        The only required parameter is db_path, which takes a database file of type: db, sql, or sqlite.
+
+        There are optional parameters for managing the cache, whenever the user calls a method like: Column.min()
+        the method will check if we already stored the output of the SQL query ("SELECT MIN(Column) FROM Table")
+        for the method in the cache, if we did, then it will return the result directly from the cache,
+        otherwise: run the SQL query and save the output in cache for next time.
+
+        The optional parameters for managing the cache are:
+
+        populate_cache: if True it will call the methods for each column in each table in the database,
+        when its initialized, this way when the user calls the method it will already be present in cache
+        and ready to use.
+
+        max_item_size: the max size in Megabytes an item can take in cache (sql_query + query_output)
+
+        max_dict_size: the max size of the whole cache-dictionary, if the dictionary reaches its max size,
+        no item will be added.
+        note that you can disable the Database from caching queries by simply setting this to zero
+
+        block_till_ready: by default the Database will populate the cache in the background,
+        so after the initialization the user can use the Database and in the background the cache will start
+        getting filled, you can set this to False which will stop the user from executing any code until the
+        cache is full.
+
+        :param db_path: str, path to database
+        :param populate_cache: bool, default True
+        :param max_item_size: int, size in MB
+        :param max_dict_size: int, size in MB
+        :param block_till_ready: bool, default False
+        """
         self.db_path = db_path
         extension = db_path.split('.')[-1]
         valid_extension = ('sql', 'db', 'sqlite', 'sqlite3')
@@ -20,10 +62,27 @@ class DataBase:
         if extension == 'sql':
             self.conn = load_sql_to_sqlite(db_path)
         else:
-            self.conn = sqlite3.connect(db_path)
+            self.conn = sqlite3.connect(db_path, check_same_thread=False)
+
+        self.cache = Cache(
+            conn=self.conn,
+            max_item_size=max_item_size,
+            max_dict_size=max_dict_size
+        )
 
         for table in self.tables:
-            setattr(self, table, Table(conn=self.conn, name=table))
+            setattr(self, table, Table(conn=self.conn, cache=self.cache, name=table))
+
+        if populate_cache:
+            threads = []
+            for _, table in self.items():
+                thread = Thread(target=self.cache.populate_table, kwargs={'table': table})
+                thread.start()
+                threads.append(thread)
+
+            if block_till_ready:
+                for thread in threads:
+                    thread.join()
 
     def exit(self) -> None:
         """
@@ -33,7 +92,6 @@ class DataBase:
         """
         try:
             self.conn.close()
-
         except sqlite3.ProgrammingError:
             warnings.warn('Connection already closed!')
 
@@ -44,8 +102,7 @@ class DataBase:
 
         :return: list with table names
         """
-        with self.conn as cursor:
-            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        return [x[0] for x in self.cache.execute("SELECT name FROM sqlite_master WHERE type='table'")]
 
     def get_columns(self, table_name: str) -> list[str]:
         """
@@ -57,31 +114,14 @@ class DataBase:
         if table_name not in self.tables:
             raise InvalidTableError(f'No such table: {table_name}')
 
-        with self.conn as cursor:
-            return [x[1] for x in cursor.execute(f"PRAGMA table_info('{table_name}')")]
+        return [x[1] for x in self.cache.execute(f"PRAGMA table_info('{table_name}')")]
 
-    @staticmethod
-    def _rename_duplicate_cols(columns: list) -> list:
+    def items(self) -> Generator:
         """
-        for each duplicated column it will add a number as the suffix
-
-        ex: ['a', 'b', 'c', 'a', 'b', 'b'] -> ['a', 'b', 'c', 'a_2', 'b_2', 'b_3']
-
-        :param columns: DataFrame
-        :return: list
+        Generator that yields: (table_name, table_object)
         """
-        new_cols = []
-        prev_cols = []  # previously iterated columns in for loop
-
-        for col in columns:
-            prev_cols.append(col)
-            count = prev_cols.count(col)
-
-            if count > 1:
-                new_cols.append(f'{col}_{count}')
-            else:
-                new_cols.append(col)
-        return new_cols
+        for table in self.tables:
+            yield table, getattr(self, table)
 
     def query(self, sql_query: str, rename_duplicates: bool = True) -> DataFrame:
         """
@@ -102,7 +142,7 @@ class DataBase:
 
         duplicates = len(set(cols)) != len(cols)
         if duplicates and rename_duplicates:
-            cols = self._rename_duplicate_cols(cols)
+            cols = rename_duplicate_cols(cols)
 
         return DataFrame(data=data, columns=cols)
 
@@ -137,7 +177,7 @@ class DataBase:
             raise InvalidTableError(f'No such table: {table_name}')
 
         if not hasattr(self, table_name):  # if table was created after the instance:
-            setattr(self, table_name, Table(conn=self.conn, name=table_name))
+            setattr(self, table_name, Table(conn=self.conn, cache=self.cache, name=table_name))
 
         return getattr(self, table_name)
 
@@ -166,6 +206,10 @@ class DataBase:
             return self._get_table(attr)
         except InvalidTableError:
             raise AttributeError(f'No such attribute: {attr}')
+
+    def __len__(self) -> int:
+        """ Get the number of tables in the database """
+        return len(self.tables)
 
     def __str__(self) -> str:
         """ Get the string representation of the class instance """

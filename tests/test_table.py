@@ -21,7 +21,7 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestTable(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DataBase(MAIN_DATABASE)
+        self.db = DataBase(MAIN_DATABASE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
 
         tables = self.db.tables
@@ -102,7 +102,9 @@ class TestTable(unittest.TestCase):
     def test_applymap(self):
         for table_name in self.db.tables:
             table = self.db[table_name].applymap(
-                lambda x: len(str(x)) if x is None or type(x) in (str, float) else x)
+                lambda x: len(str(x)) if x is None or type(x) in (str, float) else x,
+                ignore_na=False
+            )
 
             for row in table:
                 self.assertIsInstance(row, tuple)

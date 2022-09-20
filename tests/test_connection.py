@@ -1,11 +1,13 @@
 from pandas import DataFrame
 
+import unittest
+import sqlite3
+from collections.abc import Generator
+
 from pandasdb import DataBase
 from pandasdb.table import Table
 from pandasdb.exceptions import InvalidTableError
 
-import unittest
-import sqlite3
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -17,7 +19,7 @@ MIN_TABLES = 1
 
 class TestConnection(unittest.TestCase):
     def setUp(self):
-        self.db = DataBase(MAIN_DATABASE)
+        self.db = DataBase(MAIN_DATABASE, block_till_ready=True)
 
         tables = self.db.tables
         self.assertGreaterEqual(len(tables), MIN_TABLES,
@@ -26,42 +28,49 @@ class TestConnection(unittest.TestCase):
     def tearDown(self):
         self.db.exit()
 
-    # test Extensions (.db, .sql, .sqlite)
     def test_file_type_db(self):
-        db = DataBase(DB_FILE)
+        db = DataBase(DB_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['forest_area', 'land_area', 'regions'])
         db.exit()
 
     def test_file_type_sql(self):
-        db = DataBase(SQL_FILE)
+        db = DataBase(SQL_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
 
     def test_file_type_sqlite(self):
-        db = DataBase(SQLITE_FILE)
+        db = DataBase(SQLITE_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['Answer', 'Question', 'Survey'])
         db.exit()
 
     def test_exit(self):
-        db = DataBase(MAIN_DATABASE)
+        db = DataBase(MAIN_DATABASE, block_till_ready=True)
         table = db.tables[0]
         db.exit()
 
         self.assertRaisesRegex(
             sqlite3.ProgrammingError,
             '^Cannot operate on a closed database.$',
-            db.get_columns, table
+            db.query, f"SELECT * FROM {table}"
         )
 
     def test_tables(self):
         out = self.db.tables
-        self.assertEqual(type(out), list)
+        self.assertIsInstance(out, list)
         self.assertGreaterEqual(len(out), MIN_TABLES)
 
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])
-        self.assertEqual(type(out), list)
+        self.assertIsInstance(out, list)
         self.assertGreaterEqual(len(out), MIN_TABLES)
+
+    def test_items(self):
+        out = self.db.items()
+        self.assertIsInstance(out, Generator)
+
+        for table_name, table_object in self.db.items():
+            self.assertIsInstance(table_name, str)
+            self.assertIsInstance(table_object, Table)
 
     def test_query(self):
         self.assertEqual(MAIN_DATABASE, '../data/forestation.db',
@@ -84,18 +93,17 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(df.columns.to_list(), renamed_cols)
 
     def test_context_manager(self):
-        with DataBase(MAIN_DATABASE) as data_base:
+        with DataBase(MAIN_DATABASE, block_till_ready=True) as data_base:
             table = data_base.tables[0]
             self.assertIsInstance(data_base, DataBase)
 
         self.assertRaisesRegex(
             sqlite3.ProgrammingError,
             '^Cannot operate on a closed database.$',
-            data_base.get_columns, table
+            data_base.query, f"SELECT * FROM {table}"
         )
 
     def test_get_table(self):
-        # add test for tables created after init
         """
         DataBase.__getitem__() and DataBase.__getattr__()
         are two different ways to get the table object,
@@ -127,6 +135,11 @@ class TestConnection(unittest.TestCase):
             f'^No such table: {non_existing_table}$',
             self.db._get_table, non_existing_table
         )
+
+    def test_len(self):
+        out = len(self.db)
+        self.assertIsInstance(out, int)
+        self.assertEqual(out, len(self.db.tables))
 
     def test_repr(self):
         self.assertIsInstance(repr(self.db), str)

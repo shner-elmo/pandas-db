@@ -5,3 +5,4 @@ __pycache__/
 notes.txt
 dist
 pandasdb2.egg-info
+.mypy_cache/
