@@ -3,9 +3,10 @@ from pympler import asizeof
 
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Generator, TypeVar
 
-# from .column import Column
+BaseTypes = str | int | float
+T = TypeVar("T")
 
 
 def mb_size(*obj) -> float:
@@ -65,6 +66,12 @@ def rename_duplicate_cols(columns: list) -> list:
         else:
             new_cols.append(col)
     return new_cols
+
+
+def infinite_generator(x):
+    """ Yield x infinitely """
+    while True:
+        yield x
 
 
 def convert_db_to_sql(db_file: str, sql_file: str) -> None:

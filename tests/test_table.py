@@ -62,6 +62,16 @@ class TestTable(unittest.TestCase):
         print(self.table.shape)
         self.assertEqual(self.table.shape, self.table.to_df().shape)
 
+    def test_describe(self):
+        for _, table in self.db.items():
+            data = {}
+            for name, col in table.items():
+                data[name] = col.describe()
+
+            self.assertIsInstance(data, dict)
+            self.assertEqual(len(data), len(table.columns))
+            self.assertEqual(table.describe(), data)
+
     def test_to_df(self):
         df = self.table.to_df()
         self.assertIsInstance(df, DataFrame)
@@ -226,9 +236,16 @@ class TestTable(unittest.TestCase):
     def test_hash(self):
         self.assertIsInstance(hash(self.table), int)
 
+    def test_repr_df(self):
+        for name, table in self.db.items():
+            df = table._repr_df()
+
+            self.assertIsInstance(df, DataFrame)
+
     def test_repr(self):
         self.assertIsInstance(repr(self.table), str)
         self.assertIsInstance(str(self.table), str)
+        self.assertIsInstance(self.table._repr_html_(), str)
 
 
 if __name__ == '__main__':

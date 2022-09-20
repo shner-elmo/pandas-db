@@ -3,7 +3,6 @@ from pandas import DataFrame
 import sqlite3
 from typing import Generator, Callable, Any
 
-
 from .exceptions import InvalidColumnError
 from .column import Column
 from .indexloc import IndexLoc
@@ -49,7 +48,7 @@ class Table:
         """
         Get a tuple with: (n_rows, n_cols)
         """
-        return self.len, len(next(iter(self)))  # TODO test time taken for next(iter(self)) vs ...
+        return self.len, len(next(iter(self)))
 
     def describe(self) -> dict[str, dict[str, Any]]:
         """
@@ -77,14 +76,15 @@ class Table:
                 return cursor.execute(self._query + f' LIMIT {limit}').fetchall()
             return cursor.execute(self._query).fetchall()
 
-    def items(self) -> Generator[tuple[str, Column]]:
+    def items(self) -> Generator[tuple[str, Column], None, None]:
         """
         Generator that yields: (column_name, col_object)
         """
         for col in self.columns:
             yield col, getattr(self, col)
 
-    def applymap(self, func: Callable, *, ignore_na: bool = True, args: tuple = tuple(), **kwargs) -> Generator[tuple]:
+    def applymap(self, func: Callable, *, ignore_na: bool = True,
+                 args: tuple = tuple(), **kwargs) -> Generator[tuple, None, None]:
         """
         Apply function on each cell in the table
         
@@ -124,7 +124,7 @@ class Table:
         """
         return IndexLoc(it=iter(self), length=len(self))
 
-    def __iter__(self) -> Generator[tuple]:
+    def __iter__(self) -> Generator[tuple, None, None]:
         """
         Yield rows from cursor
         """

@@ -430,10 +430,9 @@ pandas.core.series.Series
 ```
 
 And finally, you can pass an SQL query to `db.query()` which will return a `DataFrame` with the results:
+# TODO replace query
 ```python
 q = """
-SELECT * FROM forest_area
-JOIN 
 """
 df = db.query(q)
 df

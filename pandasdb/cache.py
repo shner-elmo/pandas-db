@@ -7,15 +7,18 @@ class Cache:
     """
     A class for managing the cache for all the SQL queries
     """
-    def __init__(self, conn: sqlite3.Connection, max_item_size: int = 2, max_dict_size: int = 100) -> None:
+    def __init__(self, conn: sqlite3.Connection, cache_output: bool, max_item_size: int = 2,
+                 max_dict_size: int = 100) -> None:
         """
         Initialize the cache
 
         :param conn: Sqlite3 Connection
+        :param cache_output: bool, if True it will cache the SQL query output in a dict
         :param max_item_size: int, max cache item size in MB (key + value)
         :param max_dict_size: int, max cache dict size in MB
         """
         self.conn = conn
+        self.cache_output = cache_output
         self.max_item_size = max_item_size
         self.max_dict_size = max_dict_size
 
@@ -67,6 +70,10 @@ class Cache:
         :param query: str
         :return: list with query results
         """
+        if not self.cache_output:
+            with self.conn as cursor:
+                return cursor.execute(query).fetchall()
+
         if query in self.data:
             return self.data[query]
 
@@ -74,12 +81,9 @@ class Cache:
             query_out = cursor.execute(query).fetchall()
 
         size = mb_size(query, query_out)
-
         if size <= self.max_item_size and size + self.size <= self.max_dict_size:
             self.add_cache(key=query, val=query_out)
             self.size += size
-        else:
-            print(f'item refused: \n {size=}, {query=}')
 
         return query_out
 
@@ -114,5 +118,4 @@ class Cache:
                 col.unique(),
                 col.value_counts()
 
-        print(f'cached ready for {table._name}')
         self._ready_count += 1

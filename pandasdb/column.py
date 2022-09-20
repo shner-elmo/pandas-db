@@ -19,12 +19,12 @@ class Column:
     """
     def __init__(self, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str) -> None:
         """
-        # TODO complete docstring
+        Initialize the Column object
 
-        :param conn:
-        :param cache:
-        :param table_name:
-        :param col_name:
+        :param conn: sqlite3.Connection
+        :param cache: Cache, instance of Cache
+        :param table_name: str
+        :param col_name: str
         """
         self.conn = conn  # make all attributes private
         self._cache = cache
@@ -39,7 +39,7 @@ class Column:
 
         :return: type, str | int | float
         """
-        return type(next(iter(self)))  # TODO: test how long to get teh first element in a big and small table
+        return type(next(iter(self)))
 
     @property
     def sql_type(self) -> str:
@@ -256,7 +256,8 @@ class Column:
                 return [tup[0] for tup in cursor.execute(self._query + f' LIMIT {limit}')]
             return [tup[0] for tup in cursor.execute(self._query)]
 
-    def apply(self, func: Callable, *, ignore_na: bool = True, args: tuple = tuple(), **kwargs) -> Generator:
+    def apply(self, func: Callable, *, ignore_na: bool = True,
+              args: tuple = tuple(), **kwargs) -> Generator[tuple, None, None]:
         """
         Apply function on each cell in the column
 
@@ -400,13 +401,6 @@ class Column:
         :return: Generator
         """
         if isinstance(other, Column):
-            if self.data_is_numeric() and other.data_is_numeric():
-                pass
-            elif self.type is str and other.type is str:
-                pass
-            else:
-                raise TypeError(f'Unsupported operand types for + ({self.type} and {other.type})')
-
             for x, y in zip(self, other):
                 yield x + y
         else:
@@ -464,7 +458,10 @@ class Column:
                 raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
 
             for x in self:
-                yield x * other
+                if x is None:
+                    yield x
+                else:
+                    yield x * other
 
     def __truediv__(self, other: Column | float) -> Generator:
         """

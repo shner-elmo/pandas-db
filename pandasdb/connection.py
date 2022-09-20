@@ -17,7 +17,7 @@ class DataBase:
     and the columns will be stored as attributes in they're respective tables
     You can have a look at the README here: https://github.com/shner-elmo/pandas-db/blob/master/README.md
     """
-    def __init__(self, db_path: str, populate_cache: bool = True, max_item_size: int = 2,
+    def __init__(self, db_path: str, cache: bool = True, populate_cache: bool = True, max_item_size: int = 2,
                  max_dict_size: int = 100, block_till_ready: bool = False) -> None:
         """
         Initialize the DataBase object
@@ -31,6 +31,8 @@ class DataBase:
 
         The optional parameters for managing the cache are:
 
+        cache: if True it will store the results of each SQL query in a dictionary for next time
+
         populate_cache: if True it will call the methods for each column in each table in the database,
         when its initialized, this way when the user calls the method it will already be present in cache
         and ready to use.
@@ -39,7 +41,6 @@ class DataBase:
 
         max_dict_size: the max size of the whole cache-dictionary, if the dictionary reaches its max size,
         no item will be added.
-        note that you can disable the Database from caching queries by simply setting this to zero
 
         block_till_ready: by default the Database will populate the cache in the background,
         so after the initialization the user can use the Database and in the background the cache will start
@@ -47,6 +48,7 @@ class DataBase:
         cache is full.
 
         :param db_path: str, path to database
+        :param cache: bool, default True
         :param populate_cache: bool, default True
         :param max_item_size: int, size in MB
         :param max_dict_size: int, size in MB
@@ -66,6 +68,7 @@ class DataBase:
 
         self.cache = Cache(
             conn=self.conn,
+            cache_output=cache,
             max_item_size=max_item_size,
             max_dict_size=max_dict_size
         )
@@ -73,7 +76,7 @@ class DataBase:
         for table in self.tables:
             setattr(self, table, Table(conn=self.conn, cache=self.cache, name=table))
 
-        if populate_cache:
+        if cache and populate_cache:
             threads = []
             for _, table in self.items():
                 thread = Thread(target=self.cache.populate_table, kwargs={'table': table})
@@ -116,7 +119,7 @@ class DataBase:
 
         return [x[1] for x in self.cache.execute(f"PRAGMA table_info('{table_name}')")]
 
-    def items(self) -> Generator:
+    def items(self) -> Generator[tuple[str, Table], None, None]:
         """
         Generator that yields: (table_name, table_object)
         """
