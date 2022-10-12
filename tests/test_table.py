@@ -4,9 +4,8 @@ import unittest
 from collections.abc import Generator
 
 from pandasdb import DataBase
-from pandasdb.table import Table
+from pandasdb.table import Table, IndexLoc
 from pandasdb.column import Column
-from pandasdb.indexloc import IndexLoc
 from pandasdb.exceptions import InvalidColumnError
 
 
@@ -46,7 +45,7 @@ class TestTable(unittest.TestCase):
 
     def test_len(self):
         with self.table.conn as cursor:
-            rows = len(cursor.execute(self.table._query).fetchall())
+            rows = len(cursor.execute(self.table.query).fetchall())
 
         self.assertIsInstance(self.table.len, int)
         self.assertNotEqual(rows, 0)
@@ -55,7 +54,7 @@ class TestTable(unittest.TestCase):
 
     def test_shape(self):
         with self.table.conn as cursor:
-            first_row = next(cursor.execute(self.table._query))
+            first_row = next(cursor.execute(self.table.query))
 
         shape = self.table.len, len(first_row)
         self.assertEqual(self.table.shape, shape)
@@ -79,7 +78,7 @@ class TestTable(unittest.TestCase):
         self.assertEqual(list(df.columns), self.table.columns)
 
         with self.table.conn as cursor:
-            db_first_row = cursor.execute(self.table._query).fetchone()
+            db_first_row = cursor.execute(self.table.query).fetchone()
 
         df_first_row = tuple(df.iloc[0])
         self.assertEqual(df_first_row, db_first_row)
@@ -94,6 +93,15 @@ class TestTable(unittest.TestCase):
 
         data = self.table.data(5)
         self.assertEqual(len(data), 5)
+
+    def test_sample(self):
+        out = self.table.sample(n=10)
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 10)
+
+        random_samples = [self.table.sample() for _ in range(5)]
+        unique_items = (random_samples.count(x) == 1 for x in random_samples)
+        self.assertTrue(all(unique_items))
 
     def test_items(self):
         self.assertIsInstance(self.table.items(), Generator)
@@ -177,11 +185,15 @@ class TestTable(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
+        out = self.table.iloc[len(self.table) + 5:]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 0)
+
         types = [dict(), set(), tuple(), 3.32, '3.32']
         for i in types:
             self.assertRaisesRegex(
                 TypeError,
-                f'Index must be of type: int, list, or slice, not: {type(i)}',
+                f'Index must be of type: int, list, or slice. not: {type(i)}',
                 self.table.iloc.__getitem__, i
             )
 
@@ -225,7 +237,7 @@ class TestTable(unittest.TestCase):
 
         for col in self.table.columns:
             col_obj = self.table._get_col(column=col)
-            self.assertEqual(col_obj._name, col)
+            self.assertEqual(col_obj.name, col)
 
             attr_col = getattr(self.table, col)
             item_col = self.table[col]

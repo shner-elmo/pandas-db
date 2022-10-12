@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pandas import DataFrame
 
 import sqlite3
@@ -23,25 +25,26 @@ class Table:
         """
         self.conn = conn
         self._cache = cache
-        self._name = name
-        self._query = f'SELECT * FROM {self._name}'
+        self.name = name
+        self.query = f'SELECT * FROM {self.name}'
 
+        # TODO store columns in dict, and change self.items() implementation
         for col in self.columns:
-            setattr(self, col, Column(conn=self.conn, cache=self._cache, table_name=self._name, col_name=col))
+            setattr(self, col, Column(conn=self.conn, cache=self._cache, table_name=self.name, col_name=col))
 
     @property
     def columns(self) -> list[str]:
         """
         Get list with column names
         """
-        return [x[1] for x in self._cache.execute(f"PRAGMA table_info('{self._name}')")]
+        return [x[1] for x in self._cache.execute(f"PRAGMA table_info('{self.name}')")]
 
     @property
     def len(self) -> int:
         """
         Return amount of rows in the table
         """
-        return self._cache.execute(f'SELECT COUNT(*) FROM {self._name}')[0][0]
+        return self._cache.execute(f'SELECT COUNT(*) FROM {self.name}')[0][0]
 
     @property
     def shape(self) -> tuple:
@@ -73,8 +76,18 @@ class Table:
         """
         with self.conn as cursor:
             if limit:
-                return cursor.execute(self._query + f' LIMIT {limit}').fetchall()
-            return cursor.execute(self._query).fetchall()
+                return cursor.execute(self.query + f' LIMIT {limit}').fetchall()
+            return cursor.execute(self.query).fetchall()
+
+    def sample(self, n: int = 10) -> list[tuple]:
+        """
+        Get a list of random rows from the table
+
+        :param n: int, number of rows
+        :return: list with nested tuples
+        """
+        with self.conn as cursor:
+            return cursor.execute(f'{self.query} ORDER BY RANDOM() LIMIT {n}').fetchall()
 
     def items(self) -> Generator[tuple[str, Column], None, None]:
         """
@@ -114,22 +127,22 @@ class Table:
         Get data by: index, list, or slice
 
         Getitem supports three ways of indexing table rows:
-        1) Singular Integer, ex: IndexIloc[0], IndexIloc[32], or with negative: IndexIloc[-12]
-        2) Passing a list of integers, ex: IndexIloc[[1, 22, 4, 3, 17, 38]], IndexIloc[[1, -4, 17, 22, 38, -4, -1]]
-        4) Passing Slice, ex: IndexIloc[:10], IndexIloc[2:8], IndexIloc[2:24:2]
+        1) Singular Integer, ex: iloc[0], iloc[32], or with negative: iloc[-12]
+        2) Passing a list of integers, ex: iloc[[1, 22, 4, 3, 17, 38]], iloc[[1, -4, 17, 22, 38, -4, -1]]
+        4) Passing Slice, ex: iloc[:10], iloc[2:8], iloc[2:24:2]
 
         The return type will be a list for multiple items and a tuple for single items
 
         :return: tuple or list of tuples
         """
-        return IndexLoc(it=iter(self), length=len(self))
+        return IndexLoc(obj=self)
 
     def __iter__(self) -> Generator[tuple, None, None]:
         """
         Yield rows from cursor
         """
         with self.conn as cursor:
-            yield from cursor.execute(self._query)
+            yield from cursor.execute(self.query)
 
     def _get_col(self, column: str) -> Column:
         """
@@ -143,6 +156,7 @@ class Table:
             raise InvalidColumnError(f'Column must be one of the following: {", ".join(self.columns)}')
         return getattr(self, column)
 
+    # TODO: add option for list of items/columns and return new Table object with selected columns
     def __getitem__(self, item: str) -> Column:
         """
         Get column object for given column name
@@ -156,88 +170,37 @@ class Table:
         except InvalidColumnError:
             raise KeyError(f'No such Column: {item}, must be one of the following: {", ".join(self.columns)}')
 
-    def __getattr__(self, attr: str) -> Column:
-        """
-        Get column object for given column name
-
-        :param attr: str, column-name
-        :return: Column
-        :raise: AttributeError
-        """
-        try:
-            return self._get_col(attr)
-        except InvalidColumnError:
-            raise AttributeError(f'No such attribute: {attr}')
-
     def __len__(self) -> int:
         """ Return amount of rows """
         return self.len
 
     def __hash__(self) -> int:
         """ Get hash value of Table """
-        return hash(f'{self._name}')
+        return hash(f'{self.name}')
 
     def _repr_df(self) -> DataFrame:
         """
         Get a sample of the table data
         
         This method is a helper for: __str__, __repr__, and _repr_html_.
-        It returns a sample of the table data, by default: 10 rows and 5 columns,
-        and adds an index column with the correspondent index to get the same rows via Table.iloc[].
-        The returned Dataframe may appear like it has more than 10 rows but in reality
+        It returns a sample of the table data, by default the first and last 5 rows,.
 
         :return: DataFrame
         """
-        max_rows = 10
-        max_cols = 5
-        n_rows, n_cols = self.shape
+        top_rows = 10
+        bottom_rows = 10
 
-        index_col = ['__index_col__']
-        if n_rows > max_rows:
-            index_col.extend(range(max_rows // 2))
-            index_col.append('...')
-            index_col.extend(range(n_rows - (max_rows // 2), n_rows))
-        else:
-            index_col.extend(range(n_rows))
-
-        cols = [index_col]
-
-        for idx, items in enumerate(self.items()):
-            name: str = items[0]
-            column: Column = items[1]
-
-            if idx == max_cols:
-                break
-
-            column_data = [name]
-            if n_rows > max_rows:
-                column_data.extend(column.iloc[:max_rows // 2])
-                column_data.append('...')
-                column_data.extend(column.iloc[-max_rows // 2:])
-            else:
-                column_data.extend(column.iloc[:])
-
-            cols.append(column_data)
-
-        if len(cols) - 1 < n_cols:  # columns - index
-            idx = n_cols // 2
-            empty_col = ['...'] * len(cols[0])
-            cols.insert(idx, empty_col)
-
-        data = list(zip(*cols))  # transpose nested list; [(col1), (col2)] -> [(row1), (row2), (row3)...]
-        df = DataFrame(data=data[1:], columns=data[0])
-        df = df.set_index('__index_col__')
-        df.index.name = None
-        return df
-
-    def __str__(self) -> str:
-        """ Return table as a Pandas DataFrame """
-        return self._repr_df().to_string(show_dimensions=False)
+        data = self.iloc[:top_rows] + self.iloc[-bottom_rows:]
+        n = len(self)
+        index = list(range(top_rows)) + list(range(n - bottom_rows, n))
+        return DataFrame(index=index, data=data, columns=self.columns)
 
     def __repr__(self) -> str:
         """ Return table as a Pandas DataFrame """
-        return self._repr_df().to_string(show_dimensions=False)
+        n_rows, n_cols = self.shape
+        size_info = f'\n\n[{n_rows} rows x {n_cols} columns]'
+        return self._repr_df().to_string(show_dimensions=False, max_rows=10) + size_info
 
     def _repr_html_(self) -> str:
         """ Return table in HTML """
-        return self._repr_df().to_html(show_dimensions=False)
+        return self._repr_df().to_html(show_dimensions=False, max_rows=10)

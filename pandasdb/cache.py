@@ -1,29 +1,62 @@
+from __future__ import annotations
+
 import sqlite3
+from typing import TYPE_CHECKING
 
-from .utils import mb_size
+from .utils import get_mb_size
+if TYPE_CHECKING:
+    from .table import Table
 
 
-class Cache:
+class CacheDict(dict):
+    def __setitem__(self, key: str, value: list[tuple]) -> None:
+        """
+        Add key and value to cache
+
+        Set the SQL query as the key, and the output as the value.
+
+        :param key: str, SQL query
+        :param value: list, list with query output (Cursor.fetchall())
+        :raise TypeError: if not isinstance(key, str) or not isinstance(val, str)
+        :return: None
+        """
+        if not isinstance(key, str):
+            raise TypeError(f'Key must be of type str not {type(key)}')
+        if not isinstance(value, list):
+            raise TypeError(f'Value must be of type list not {type(value)}')
+
+        super().__setitem__(key, value)
+
+    def __str__(self) -> str:
+        """ Get amount of items in the dictionary """
+        return f'Cache items: {len(self)}'
+
+    def __repr__(self) -> str:
+        """ Get representation of dictionary """
+        return super().__repr__()
+
+
+class Cache(CacheDict):
     """
     A class for managing the cache for all the SQL queries
     """
-    def __init__(self, conn: sqlite3.Connection, cache_output: bool, max_item_size: int = 2,
-                 max_dict_size: int = 100) -> None:
+    def __init__(self, conn: sqlite3.Connection, cache_output: bool, max_item_size: float = 2.0,
+                 max_dict_size: float = 100.0) -> None:
         """
         Initialize the cache
 
         :param conn: Sqlite3 Connection
-        :param cache_output: bool, if True it will cache the SQL query output in a dict
-        :param max_item_size: int, max cache item size in MB (key + value)
-        :param max_dict_size: int, max cache dict size in MB
+        :param cache_output: bool, Cache output of SQL queries ?
+        :param max_item_size: float, max cache item size in MB (key + value)
+        :param max_dict_size: float, max cache dict size in MB
         """
+        super().__init__()
         self.conn = conn
         self.cache_output = cache_output
         self.max_item_size = max_item_size
         self.max_dict_size = max_dict_size
 
-        self.data: dict[str, list] = {}
-        self.size = 0
+        self.mb_size = 0
         self._ready_count = 0
 
     @property
@@ -31,37 +64,8 @@ class Cache:
         """
         Return true if cache is populated with all tables
         """
-        with self.conn as cursor:
-            tables = cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-
-        return self._ready_count == len(list(tables))
-
-    def add_cache(self, key: str, val: list) -> None:
-        """
-        Add key and value to cache
-
-        Set the SQL query as the key, and the output as the value.
-        If the
-
-        :param key:
-        :param val:
-        :raise ValueError: if not isinstance(key, str) or not isinstance(val, str)
-        :return:
-        """
-        if not isinstance(key, str):
-            raise ValueError(f'key must be of type str not {type(key)}')
-        if not isinstance(val, list):
-            raise ValueError(f'value must be of type list not {type(key)}')
-
-        self.data[key] = val
-
-    def reset_cache(self) -> None:
-        """
-        Reset cache dictionary
-
-        :return: None
-        """
-        self.data.clear()
+        tables = [x[0] for x in self.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        return self._ready_count == len(tables)
 
     def execute(self, query: str) -> list:
         """
@@ -74,20 +78,20 @@ class Cache:
             with self.conn as cursor:
                 return cursor.execute(query).fetchall()
 
-        if query in self.data:
-            return self.data[query]
+        if query in self:
+            return self[query]
 
         with self.conn as cursor:
             query_out = cursor.execute(query).fetchall()
 
-        size = mb_size(query, query_out)
-        if size <= self.max_item_size and size + self.size <= self.max_dict_size:
-            self.add_cache(key=query, val=query_out)
-            self.size += size
+        out_size = get_mb_size(query, query_out)
+        if out_size <= self.max_item_size and out_size + self.mb_size <= self.max_dict_size:
+            self[query] = query_out
+            self.mb_size += out_size
 
         return query_out
 
-    def populate_table(self, table: 'Table') -> None:
+    def populate_table(self, table: Table) -> None:
         """
         Call the most common methods for each column in the table to start populating the cache-dict
 

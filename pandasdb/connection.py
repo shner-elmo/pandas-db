@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 from pandas import DataFrame
 
 import sqlite3
 import warnings
-from typing import Generator
+from typing import Generator, Any
 from threading import Thread
+from pathlib import Path
 
 from .utils import load_sql_to_sqlite, rename_duplicate_cols
 from .table import Table
@@ -54,14 +57,17 @@ class DataBase:
         :param max_dict_size: int, size in MB
         :param block_till_ready: bool, default False
         """
+        path = Path(db_path)
+        self.name = path.name
         self.db_path = db_path
-        extension = db_path.split('.')[-1]
-        valid_extension = ('sql', 'db', 'sqlite', 'sqlite3')
+
+        extension = path.suffix
+        valid_extension = ('.sql', '.db', '.sqlite', '.sqlite3')
 
         if extension not in valid_extension:
             raise FileTypeError(f'File extension must be one of the following: {valid_extension}')
 
-        if extension == 'sql':
+        if extension == '.sql':
             self.conn = load_sql_to_sqlite(db_path)
         else:
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -73,8 +79,9 @@ class DataBase:
             max_dict_size=max_dict_size
         )
 
+        self._table_items: dict[str, Table] = {}
         for table in self.tables:
-            setattr(self, table, Table(conn=self.conn, cache=self.cache, name=table))
+            self._set_table(table=table)
 
         if cache and populate_cache:
             threads = []
@@ -107,6 +114,18 @@ class DataBase:
         """
         return [x[0] for x in self.cache.execute("SELECT name FROM sqlite_master WHERE type='table'")]
 
+    @property
+    def views(self) -> list[str]:
+        """
+        Get a list of all views
+
+        Note that the filter method creates custom views for its filters but those all start with a double underscores.
+
+        :return: list with table names
+        """
+        with self.conn as cursor:
+            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
+
     def get_columns(self, table_name: str) -> list[str]:
         """
         Get list of all columns within given table
@@ -123,8 +142,7 @@ class DataBase:
         """
         Generator that yields: (table_name, table_object)
         """
-        for table in self.tables:
-            yield table, getattr(self, table)
+        yield from self._table_items.items()
 
     def query(self, sql_query: str, rename_duplicates: bool = True) -> DataFrame:
         """
@@ -143,9 +161,9 @@ class DataBase:
 
         cols = [x[0] for x in data.description]
 
-        duplicates = len(set(cols)) != len(cols)
-        if duplicates and rename_duplicates:
-            cols = rename_duplicate_cols(cols)
+        if rename_duplicates:
+            if len(set(cols)) != len(cols):
+                cols = rename_duplicate_cols(cols)
 
         return DataFrame(data=data, columns=cols)
 
@@ -168,55 +186,47 @@ class DataBase:
         """
         self.exit()
 
-    def _get_table(self, table_name: str) -> Table:
+    def _set_table(self, table: str) -> None:
+        """
+        Create and set table-object to instance
+
+        Create table object and save it to the self._table_items dictionary,
+        and if the table-name isn't an existing attribute or method; then set it as an attribute as well.
+        The table objects can be accessed using __getitem__ (db[table_name]) or as an attribute (db.table_name).
+
+        :param table: str
+        :return: None
+        """
+        table_obj = Table(conn=self.conn, cache=self.cache, name=table)
+        self._table_items[table] = table_obj
+
+        if not hasattr(self, table):  # to avoid overwriting existing attributes and methods
+            setattr(self, table, table_obj)
+
+    def __getitem__(self, table: str) -> Table:
         """
         Get Table object for given table_name
 
-        :param table_name: str
-        :raise: ValueError if table name is not valid
-        :return: Table
-        """
-        if table_name not in self.tables:
-            raise InvalidTableError(f'No such table: {table_name}')
-
-        if not hasattr(self, table_name):  # if table was created after the instance:
-            setattr(self, table_name, Table(conn=self.conn, cache=self.cache, name=table_name))
-
-        return getattr(self, table_name)
-
-    def __getitem__(self, item: str) -> Table:
-        """
-        Get Table object for given table_name
-
-        :param item: str, table name
+        :param table: str, table name
         :raise: KeyError if key not found
         :return: Table
         """
-        try:
-            return self._get_table(item)
-        except InvalidTableError:
-            raise KeyError(f'No such Table: {item}, must be one of the following: {", ".join(self.tables)}')
+        if table not in self.tables:
+            raise KeyError(f'No such Table: {table}, must be one of the following: {", ".join(self.tables)}')
 
-    def __getattr__(self, attr: str) -> Table:
-        """
-        Get Table object for given table_name
+        if table not in self._table_items:  # if table was created after the instance:
+            self._set_table(table=table)
 
-        :param attr:
-        :raise: AttributeError if attribute not found
-        :return: Table
-        """
-        try:
-            return self._get_table(attr)
-        except InvalidTableError:
-            raise AttributeError(f'No such attribute: {attr}')
+        return self._table_items[table]
+
+    def __getattribute__(self, item) -> Any:
+        """ Get attribute """
+        # for avoiding 'Unresolved attribute' warnings, this somehow fixes it
+        return super().__getattribute__(item)
 
     def __len__(self) -> int:
         """ Get the number of tables in the database """
         return len(self.tables)
-
-    def __str__(self) -> str:
-        """ Get the string representation of the class instance """
-        return __class__.__name__ + "(db_path='{}')".format(self.db_path)
 
     def __repr__(self) -> str:
         """ Get the string representation of the class instance """

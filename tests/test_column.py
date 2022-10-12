@@ -20,7 +20,8 @@ class TestColumn(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DataBase(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
-        self.column: Column = getattr(self.table, self.table.columns[0])
+        column = self.table.columns[0]
+        self.column: Column = self.table[column]
 
     def tearDown(self) -> None:
         self.db.exit()
@@ -55,7 +56,7 @@ class TestColumn(unittest.TestCase):
             self.assertGreater(length, 0)
 
             with self.db.conn as cursor:
-                n_rows = len(cursor.execute(self.table._query).fetchall())
+                n_rows = len(cursor.execute(self.table.query).fetchall())
 
             self.assertEqual(n_rows, length)
             self.assertEqual(col.len, col.count() + col.na_count())
@@ -117,7 +118,9 @@ class TestColumn(unittest.TestCase):
                 if col.data_is_numeric():
                     col_median = col.median()
                     ser_median = col.to_series().median()
+                    print(name)
                     self.assertAlmostEqual(ser_median, col_median, places=4)
+                    print(f'passed: {col_median=}, {ser_median=}')
                 else:
                     self.assertRaisesRegex(
                         TypeError,
@@ -193,10 +196,10 @@ class TestColumn(unittest.TestCase):
         out = self.column.to_series()
         self.assertIsInstance(out, Series)
         self.assertEqual(out.size, self.column.len)
-        self.assertEqual(out.name, self.column._name)
+        self.assertEqual(out.name, self.column.name)
 
         with self.db.conn as cursor:
-            query = next(cursor.execute(self.column._query))[0]  # returns tuple, ex: ('AMD',)
+            query = next(cursor.execute(self.column.query))[0]  # returns tuple, ex: ('AMD',)
         ser = out.iloc[0]
         col = next(iter(self.column))
 
@@ -294,11 +297,15 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
+        out = self.table.iloc[len(self.table) + 5:]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 0)
+
         types = [dict(), set(), tuple(), 3.32, '3.32']
         for i in types:
             self.assertRaisesRegex(
                 TypeError,
-                f'Index must be of type: int, list, or slice, not: {type(i)}',
+                f'Index must be of type: int, list, or slice. not: {type(i)}',
                 self.column.iloc.__getitem__, i
             )
 
@@ -357,7 +364,7 @@ class TestColumnLogicalOp(unittest.TestCase):
         self.db = DataBase(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
         self.column: Column = getattr(self.table, self.table.columns[0])
-        self.col: str = f'{self.column._table}.{self.column._name}'
+        self.col: str = f'{self.column.name}'
 
     def tearDown(self) -> None:
         self.db.exit()

@@ -6,7 +6,6 @@ from collections.abc import Generator
 
 from pandasdb import DataBase
 from pandasdb.table import Table
-from pandasdb.exceptions import InvalidTableError
 
 
 DB_FILE = '../data/forestation.db'
@@ -27,6 +26,9 @@ class TestConnection(unittest.TestCase):
 
     def tearDown(self):
         self.db.exit()
+
+    def test_init(self):
+        pass
 
     def test_file_type_db(self):
         db = DataBase(DB_FILE, block_till_ready=True)
@@ -57,7 +59,23 @@ class TestConnection(unittest.TestCase):
     def test_tables(self):
         out = self.db.tables
         self.assertIsInstance(out, list)
+        self.assertIsInstance(next(iter(out)), str)
         self.assertGreaterEqual(len(out), MIN_TABLES)
+
+        tables = set(self.db.tables)
+        views = set(self.db.views)
+        shared_items = tables & views
+        self.assertEqual(len(shared_items), 0)
+
+    def test_views(self):
+        out = self.db.views
+        self.assertIsInstance(out, list)
+        self.assertIsInstance(next(iter(out)), str)
+
+        tables = set(self.db.tables)
+        views = set(self.db.views)
+        shared_items = tables & views
+        self.assertEqual(len(shared_items), 0)
 
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])
@@ -103,38 +121,57 @@ class TestConnection(unittest.TestCase):
             data_base.query, f"SELECT * FROM {table}"
         )
 
+    def test_set_table(self):
+        tables = self.db.tables
+        for table in tables:
+            self.assertIn(member=table, container=self.db._table_items)
+            self.assertIsInstance(self.db._table_items[table], Table)
+
+        self.assertTrue(hasattr(self.db, 'conn'))
+        self.assertIsInstance(self.db.conn, sqlite3.Connection)
+        self.assertNotIn(member='conn', container=self.db._table_items)
+
+        self.db._set_table(table='conn')
+        self.assertIn(member='conn', container=self.db._table_items)
+        self.assertIsInstance(self.db.conn, sqlite3.Connection)  # make sure we don't overwrite pre-existing attributes
+
     def test_get_table(self):
         """
-        DataBase.__getitem__() and DataBase.__getattr__()
-        are two different ways to get the table object,
-        they both call DataBase._get_table() to get the object which is stored
-        as an attribute, and consequently they both return the same preexisting
-        Table object (set in __init__()).
+        All the table objects are stored in self._table_items (structure: dict[str, Table])
+        which is a dictionary, similarly to a Pandas Dataframe you can access the tables both
+        as attributes and from __getitem__.
+        note that the table will be available as an attribute only if the attribute
+        isn't already taken. For example if you have a table named 'conn' it will never be stored
+        as an attribute because that name is already reserved for the SQL connection,
+        so in this case you will have to access it like a dictionary: db['conn']
 
-        If a table is added to the DataBase after initializing the instance
-        it will create the Table object.
+        If a table is added to the DataBase after initializing the instance, only once the user
+        tries to get it (from __getitem__ or __getattribute__) then it will be created
+        and stored in the instance.
 
-        If a requested table isn't present in the Database, InvalidTableError is raised
+        If a requested table isn't present in the Database, KeyError is raised
         """
-        name = self.db.tables[0]
+        # TODO: test tables added after __init__
+        for table in self.db.tables:
+            non_existent_table = f'{table} {0.32}'
+            self.assertRaisesRegex(
+                KeyError,
+                f'No such Table: {non_existent_table}, must be one of the following: {", ".join(self.db.tables)}',
+                self.db.__getitem__, non_existent_table
+            )
+        for table in self.db.tables:
+            table_item = self.db[table]
+            table_attr = getattr(self, table, None)
 
-        table_attr = getattr(self.db, name)
-        self.assertIsInstance(table_attr, Table)
+            self.assertIsInstance(table_item, Table)
+            self.assertEqual(table_item.name, table)
 
-        table_item = self.db[name]
-        self.assertIsInstance(table_item, Table)
+            if table_attr is not None:
+                self.assertIsInstance(table_attr, Table)
+                self.assertEqual(table_attr.name, table)
 
-        self.assertEqual(table_attr, table_item)
-
-        # assert it dosent raises Exception
-        self.db._get_table(name)
-
-        non_existing_table = 'Hello There'
-        self.assertRaisesRegex(
-            InvalidTableError,
-            f'^No such table: {non_existing_table}$',
-            self.db._get_table, non_existing_table
-        )
+                self.assertEqual(table_attr, table_item)
+                self.assertEqual(id(table_attr), id(table_item))
 
     def test_len(self):
         out = len(self.db)
@@ -144,6 +181,7 @@ class TestConnection(unittest.TestCase):
     def test_repr(self):
         self.assertIsInstance(repr(self.db), str)
         self.assertIsInstance(str(self.db), str)
+        self.assertEqual(repr(self.db), str(self.db))
 
 
 if __name__ == '__main__':

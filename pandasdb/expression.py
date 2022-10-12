@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .exceptions import ExpressionError
 
 
@@ -5,34 +7,51 @@ class Expression:
     """
     A class for converting Python's logical operators to SQL-compatible strings
     """
-    def __init__(self, query: str) -> None:
-        self.query = query
+    def __init__(self, query: str, table: str) -> None:
+        """
+        An object that represents an SQL expression/filter ("price BETWEEN 5 AND 15")
 
-    def __and__(self, expression: 'Expression') -> 'Expression':
+        :param query: str, e.g., id = 3571
+        :param table: str, table-name
+        """
+        self.query = query
+        self.table = table
+
+    def __and__(self, expression: Expression) -> Expression:
         """
         Return an Expression object with 'self.query' as: 'Expression1 AND Expression2'
 
         :param expression: Expression
         :return: Expression
         :raise: ExpressionError if param: expression isn't an instance of Expression
+        :raise: ExpressionError if self.table != other.table
         """
         if not isinstance(expression, Expression):
             raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
 
-        return Expression(query=f'{self.query} AND {expression.query} ')
+        if not self.table == expression.table:
+            raise ExpressionError(
+                f'Cannot concatenate two expressions from different tables ({self.table} and {expression.table})')
 
-    def __or__(self, expression: 'Expression') -> 'Expression':
+        return Expression(query=f'{self.query} AND {expression.query} ', table=self.table)
+
+    def __or__(self, expression: Expression) -> Expression:
         """
         Return an Expression object with 'self.query' as: 'Expression1 OR Expression2'
 
         :param expression: Expression
         :return: Expression
         :raise: ExpressionError if param: expression isn't an instance of Expression
+        :raise: ExpressionError if self.table != other.table
         """
         if not isinstance(expression, Expression):
             raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
 
-        return Expression(query=f'{self.query} OR {expression.query} ')
+        if not self.table == expression.table:
+            raise ExpressionError(
+                f'Cannot concatenate two expressions from different tables ({self.table} and {expression.table})')
+
+        return Expression(query=f'{self.query} OR {expression.query} ', table=self.table)
 
     def __str__(self) -> str:
         """ Get string representation of Expression instance """

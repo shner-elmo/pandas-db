@@ -3,14 +3,17 @@ from __future__ import annotations
 from pandas import DataFrame, Series
 
 import sqlite3
-from typing import Generator, Callable, Any, Sequence
+from typing import Generator, Callable, Any, Sequence, TypeVar, Iterable
 
 from .expression import Expression
 from .indexloc import IndexLoc
 from .cache import Cache
+from .utils import same_val_generator
 
-BaseType = str | int | float | bool | None
+
+BaseTypes = str | int | float | bool | None
 Numeric = int | float
+T = TypeVar('T')
 
 
 class Column:
@@ -26,11 +29,29 @@ class Column:
         :param table_name: str
         :param col_name: str
         """
-        self.conn = conn  # make all attributes private
-        self._cache = cache
-        self._table = table_name
-        self._name = col_name
-        self._query = f'SELECT {col_name} FROM {table_name}'
+        self.conn = conn
+        self._cache = cache  # TODO move column objects to dict and make attributes public
+        self.table = table_name
+        self.name = col_name
+        self.query = f'SELECT {col_name} FROM {table_name}'
+
+    # TODO remove this and use view instead
+    @classmethod
+    def create_from_query(cls, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str,
+                          query: str) -> Column:
+        """
+        Return an instance of Column with a custom query
+
+        :param conn: sqlite3.Connection
+        :param cache: Cache, instance of Cache
+        :param table_name: str
+        :param col_name: str
+        :param query: str, SQL query
+        :return: Column instance
+        """
+        column = cls(conn=conn, cache=cache, table_name=table_name, col_name=col_name)
+        column._query = query
+        return column
 
     @property
     def type(self) -> type:
@@ -39,7 +60,9 @@ class Column:
 
         :return: type, str | int | float
         """
-        return type(next(iter(self)))
+        query = f'{self.query} WHERE {self.name} NOT NULL LIMIT 1'
+        out = self._cache.execute(query)[0][0]
+        return type(out)
 
     @property
     def sql_type(self) -> str:
@@ -51,8 +74,8 @@ class Column:
 
         :return str, e.g., TEXT, INTEGER, REAL...
         """
-        for row in self._cache.execute(f"PRAGMA table_info('{self._table}')"):
-            if row[1] == self._name:
+        for row in self._cache.execute(f"PRAGMA table_info('{self.table}')"):
+            if row[1] == self.name:
                 return row[2]
 
     def data_is_numeric(self) -> bool:
@@ -66,33 +89,33 @@ class Column:
         """
         Get the amount of rows/ cells in the column (including None values)
         """
-        return self._cache.execute(f'SELECT COUNT(*) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT COUNT(*) FROM {self.table}')[0][0]
 
     def count(self) -> int:
         """
         Get the amount of rows/ cells in the column (excluding None values)
         """
-        return self._cache.execute(f'SELECT COUNT({self._name}) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT COUNT({self.name}) FROM {self.table}')[0][0]
 
     def na_count(self) -> int:
         """
         Get the amount of None values in column
         """
-        return self._cache.execute(f'SELECT COUNT(*) FROM {self._table} WHERE {self._name} IS NULL')[0][0]
+        return self._cache.execute(f'SELECT COUNT(*) FROM {self.table} WHERE {self.name} IS NULL')[0][0]
 
-    def min(self) -> BaseType:
+    def min(self) -> str | int | float:
         """
         Get the min value of the column
         """
-        return self._cache.execute(f'SELECT MIN({self._name}) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT MIN({self.name}) FROM {self.table}')[0][0]
 
-    def max(self) -> BaseType:
+    def max(self) -> str | int | float:
         """
         Get the max value of the column
         """
-        return self._cache.execute(f'SELECT MAX({self._name}) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT MAX({self.name}) FROM {self.table}')[0][0]
 
-    def sum(self) -> float:
+    def sum(self) -> Numeric:
         """
         Get the sum of all values within the column
 
@@ -102,9 +125,9 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get sum for Column of type {self.type}')
 
-        return self._cache.execute(f'SELECT SUM({self._name}) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT SUM({self.name}) FROM {self.table}')[0][0]
 
-    def avg(self) -> float:
+    def avg(self) -> Numeric:
         """
         Get the avg value of the column
 
@@ -114,9 +137,9 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get avg for Column of type {self.type}')
 
-        return self._cache.execute(f'SELECT AVG({self._name}) FROM {self._table}')[0][0]
+        return self._cache.execute(f'SELECT AVG({self.name}) FROM {self.table}')[0][0]
 
-    def median(self) -> float:
+    def median(self) -> Numeric:
         """
         Get the median value of the column
 
@@ -126,51 +149,35 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get median for Column of type {self.type}')
 
-        def get_row_by_index(index: int | tuple) -> list[tuple]:
-            """
-            You can pass the index as either an integer or a tuple of integers
-            """
-            row_id = f'== {index}' if isinstance(index, int) else f'IN {index}'
-            q = f"""
-            SELECT {self._name} FROM (
-                SELECT 
-                    {self._name}, 
-                    ROW_NUMBER() OVER(ORDER BY {self._name} DESC) AS row_id  -- DESC to get NULL values last
-                FROM {self._table} 
-            )
-            WHERE row_id {row_id}
-            """
-            return self._cache.execute(q)
-
         count = self.count()
         if count % 2 == 0:
-            indexes = (count // 2, count // 2 + 1)
-            lst = [tup[0] for tup in get_row_by_index(indexes)]
+            indexes = [count // 2, count // 2 + 1]
+            lst = [tup for tup in self.iloc[indexes]]
             avg = sum(lst) / len(lst)
             return avg
         else:
             idx = count // 2 + 1
-            return get_row_by_index(idx)[0][0]
+            return self.iloc[idx]
 
-    def mode(self) -> dict[Any, int]:
+    def mode(self) -> dict[BaseTypes, int]:
         """
         Get the mode/s of the column as a dictionary; {'value': count}
 
         :return dict
         """
         query = f"""
-        SELECT {self._name}, COUNT(*) FROM {self._table}
+        SELECT {self.name}, COUNT(*) FROM {self.table}
         GROUP BY 1
         HAVING COUNT(*) >= (	
-            SELECT COUNT(*) FROM {self._table}
-            GROUP BY {self._name}
+            SELECT COUNT(*) FROM {self.table}
+            GROUP BY {self.name}
             ORDER BY 1 DESC
             LIMIT 1
         )
         """
         return dict(self._cache.execute(query))
 
-    def describe(self) -> dict[str, BaseType]:
+    def describe(self) -> dict[str, str | int | float]:
         """
         Get a dictionary with different properties for the column
 
@@ -200,24 +207,15 @@ class Column:
                 'unique': len(self.unique())
             }
 
-    def unique(self) -> list:
+    def unique(self) -> list[BaseTypes]:
         """
         Get list with unique values
 
         :return list
         """
-        return list(tup[0] for tup in self._cache.execute(f'SELECT DISTINCT {self._name} FROM {self._table}'))
+        return list(tup[0] for tup in self._cache.execute(f'SELECT DISTINCT {self.name} FROM {self.table}'))
 
-    def has_duplicates(self) -> bool:
-        """
-        Return True if columns has duplicated values
-
-        :return: bool
-        """
-        unique_count = self._cache.execute(f'SELECT COUNT(DISTINCT {self._name}) FROM {self._table}')[0][0]
-        return len(self) != unique_count
-
-    def value_counts(self) -> dict[Any, int]:
+    def value_counts(self) -> dict[BaseTypes, int]:
         """
         Get a dictionary with the count of each value in the Column
 
@@ -227,8 +225,8 @@ class Column:
         :return: dict
         """
         query = f"""
-        SELECT {self._name}, COUNT(*) FROM {self._table}
-        WHERE {self._name} IS NOT NULL
+        SELECT {self.name}, COUNT(*) FROM {self.table}
+        WHERE {self.name} IS NOT NULL
         GROUP BY 1
         ORDER BY 2 DESC, 1 ASC
         """
@@ -240,9 +238,9 @@ class Column:
 
         :return Pandas Series
         """
-        return Series(data=iter(self), name=self._name)
+        return Series(data=iter(self), name=self.name)
 
-    def data(self, limit: int = None) -> list:
+    def data(self, limit: int = None) -> list[BaseTypes]:
         """
         Get column-data
 
@@ -253,11 +251,21 @@ class Column:
         """
         with self.conn as cursor:
             if limit:
-                return [tup[0] for tup in cursor.execute(self._query + f' LIMIT {limit}')]
-            return [tup[0] for tup in cursor.execute(self._query)]
+                return [tup[0] for tup in cursor.execute(self.query + f' LIMIT {limit}')]
+            return [tup[0] for tup in cursor.execute(self.query)]
 
-    def apply(self, func: Callable, *, ignore_na: bool = True,
-              args: tuple = tuple(), **kwargs) -> Generator[tuple, None, None]:
+    def sample(self, n: int = 10) -> list[BaseTypes]:
+        """
+        Get a list of random values from the column
+
+        :param n: int, number of values
+        :return: list
+        """
+        with self.conn as cursor:
+            return [tup[0] for tup in cursor.execute(f'{self.query} ORDER BY RANDOM() LIMIT {n}')]
+
+    def apply(self, func: Callable[[BaseTypes, ...], T], *, ignore_na: bool = True,
+              args: tuple = (), **kwargs: Any) -> Generator[T, None, None]:
         """
         Apply function on each cell in the column
 
@@ -299,39 +307,57 @@ class Column:
 
         :return: list, str, int, or float
         """
-        return IndexLoc(it=iter(self), length=len(self))
-    
-    # def filter(self, expression: Expression, return_df: bool = False) -> Generator:
-    #     """
-    #     Return a generator with the filtered data
-    #
-    #     :param expression: _description_
-    #     :type expression: Expression
-    #     :yield: _description_
-    #     :return: Generator
-    #     """
-    #     expression_column = ''
-    #     if expression_column not in self.columns:
-    #         raise ValueError('Filter Column must be in ')
-    #
-    #     query = f""" """
-    #
-    #     with self.conn as cursor:
-    #         cur = cursor.execute(query)  # replace with self._cache.execute()
-    #
-    #     if return_df:
-    #         return DataFrame(data=cur)
-        
-    def __getitem__(self, item: int | slice | list):  # -> list | str | int | float
-        """ Return index slice """
-        # if isinstance(item, Expression):
-        #     return self.filter()
-        return self.iloc[item]
+        return IndexLoc(obj=self)
 
-    def __iter__(self) -> Generator[BaseType, None, None]:
+    def filter(self, expression: Expression) -> Column:
+        """
+        Return a new Column object with the filtered data
+
+        :param expression: Expression
+        :return: Column instance
+        """
+        with self.conn as cursor:
+            cursor.execute('CREATE VIEW ')
+
+        view_name = expression.query.replace(' ', '_')
+        view_query = f'{self.query} WHERE {expression.query}'
+
+        with self.conn as cursor:
+            cursor.execute(f'CREATE VIEW {view_name} AS {view_query}')
+
+        return Column(conn=self.conn, cache=self._cache, table_name=view_name, col_name=self.name)
+
+    def __getitem__(self, item: int | slice | list | Expression) -> Any:
+        """
+        Return index slice or filtered Column
+
+        You can do two things with Column.__getitem__():
+        1. Get value/s at given index
+        2. Get a filtered Column
+
+        There are three ways to get a value or list of values at a given index:
+        1. pass an integer: db.table.column[28]
+        2. passing a slice: db.table.column[8:24:2]
+        3. and using a list: db.table.column[[3, 2, 8, -1, 15]]
+
+        And for filtering a column you can simply pass a column with a logical expression:
+        col1 = db.table.col1
+        col1[col1 > 10]
+
+        :param item: int | slice | list | Expression
+        :return: IndexLoc | Column
+        """
+        if isinstance(item, Expression):
+            return self.filter(item)
+        elif isinstance(item, (int, slice, list)):
+            return self.iloc[item]
+
+        raise TypeError(f'param item must be of type Expression, int, slice, or list. not: {type(item)}')
+
+    def __iter__(self) -> Generator[BaseTypes, None, None]:
         """ Yield values from column """
         with self.conn as cursor:
-            for i in cursor.execute(self._query):
+            for i in cursor.execute(self.query):
                 yield i[0]
 
     def __len__(self) -> int:
@@ -340,174 +366,112 @@ class Column:
 
     def __hash__(self) -> int:
         """ Get hash value of Column """
-        return hash(f'{self._table}.{self._name}')
+        return hash(f'{self.table}.{self.name}')
 
     def _repr_df(self) -> DataFrame:
         """
         Convert column to Dataframe
 
-        Convert column to Dataframe but with only first and last five rows,
+        Convert column to a Dataframe but only first and last five rows,
         without iterating through each row.
 
         :return: DataFrame
         """
-        max_rows = 10
-        n_rows = len(self)
+        top_rows = 10
+        bottom_rows = 10
 
-        index_col: list[str | int] = ['__index_col__']
-        if n_rows > max_rows:
-            index_col.extend(range(max_rows // 2))
-            index_col.append('...')
-            index_col.extend(range(n_rows - (max_rows // 2), n_rows))
-        else:
-            index_col.extend(range(n_rows))
-
-        cols: list[list] = [index_col]
-
-        col_data: list[BaseType] = [self._name]
-        if n_rows > max_rows:
-            col_data.extend(self.iloc[:max_rows // 2])
-            col_data.append('...')
-            col_data.extend(self.iloc[-max_rows // 2:])
-        else:
-            col_data.extend(self.iloc[:])
-
-        cols.append(col_data)
-
-        data = list(zip(*cols))  # transpose nested list; [(col1), (col2)] -> [(row1), (row2), (row3)...]
-        df = DataFrame(data=data[1:], columns=data[0])
-        df = df.set_index('__index_col__')
-        df.index.name = None
-        return df
-
-    def __str__(self) -> str:
-        """ Return column as a Pandas Series """
-        return self._repr_df().to_string(show_dimensions=False)
+        data = self.iloc[:top_rows] + self.iloc[-bottom_rows:]
+        n = len(self)
+        index = list(range(top_rows)) + list(range(n - bottom_rows, n))
+        return DataFrame(index=index, data=data, columns=[self.name])
 
     def __repr__(self) -> str:
         """ Return column as a Pandas Series """
-        return self._repr_df().to_string(show_dimensions=False)
+        return self._repr_df().to_string(show_dimensions=False, max_rows=10)
 
     def _repr_html_(self) -> str:
         """ Return column in HTML """
-        return self._repr_df().to_html(show_dimensions=False)
+        return self._repr_df().to_html(show_dimensions=False, max_rows=10)
 
-    # TODO add docstrings for math functions
-    def __add__(self, other: Column | BaseType) -> Generator:  # TODO change to -> Column ? and check others
+    def __add__(self, other: Column | Iterable | str | int | float | bool) -> Generator:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | int | float | str
+        :param other: Column | Iterable | str | int | float | bool
         :return: Generator
         """
-        if isinstance(other, Column):
-            for x, y in zip(self, other):
-                yield x + y
-        else:
-            if isinstance(self, (int, float)) and isinstance(other, (int, float)):
-                pass
-            elif self.type is str and isinstance(other, str):
-                pass
+        if isinstance(other, str) or not isinstance(other, Iterable):
+            other = same_val_generator(val=other, size=len(self))
+
+        for x, y in zip(self, other, strict=True):
+            if x is None:
+                yield x
             else:
-                raise TypeError(f'Unsupported operand types for + ({self.type} and {type(other)})')
+                yield x + y
 
-            for x in self:
-                yield x + other
-
-    def __sub__(self, other: Column | float) -> Generator:
+    def __sub__(self, other: Column | Iterable | Numeric) -> Generator:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | float
+        :param other: Column | Iterable | float | int
         :return: None
         """
-        if not self.data_is_numeric():
-            raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
+        if not isinstance(other, Iterable):
+            other = same_val_generator(val=other, size=len(self))
 
-        if isinstance(other, Column):
-            if not other.data_is_numeric():
-                raise TypeError(f'Unsupported operand for types {self.type} and {other.type}')
-
-            for x, y in zip(self, other):
+        for x, y in zip(self, other, strict=True):
+            if x is None:
+                yield x
+            else:
                 yield x - y
-        else:
-            if not isinstance(other, (int, float)):
-                raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
 
-            for x in self:
-                yield x - other
-
-    def __mul__(self, other: Column | float) -> Generator:
+    def __mul__(self, other: Column | Iterable | Numeric) -> Generator:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | float
+        :param other: Column | Iterable | float | int
         :return: None
         """
-        if not self.data_is_numeric():
-            raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
+        if not isinstance(other, Iterable):
+            other = same_val_generator(val=other, size=len(self))
 
-        if isinstance(other, Column):
-            if not other.data_is_numeric():
-                raise TypeError(f'Unsupported operand for types {self.type} and {other.type}')
-
-            for x, y in zip(self, other):
+        for x, y in zip(self, other, strict=True):
+            if x is None:
+                yield x
+            else:
                 yield x * y
-        else:
-            if not isinstance(other, (int, float)):
-                raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
 
-            for x in self:
-                if x is None:
-                    yield x
-                else:
-                    yield x * other
-
-    def __truediv__(self, other: Column | float) -> Generator:
+    def __truediv__(self, other: Column | Iterable | Numeric) -> Generator:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | float
+        :param other: Column | Iterable | float | int
         :return: None
         """
-        if not self.data_is_numeric():
-            raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
+        if not isinstance(other, Iterable):
+            other = same_val_generator(val=other, size=len(self))
 
-        if isinstance(other, Column):
-            if not other.data_is_numeric():
-                raise TypeError(f'Unsupported operand for types {self.type} and {other.type}')
-
-            for x, y in zip(self, other):
+        for x, y in zip(self, other, strict=True):
+            if x is None:
+                yield x
+            else:
                 yield x / y
-        else:
-            if not isinstance(other, (int, float)):
-                raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
 
-            for x in self:
-                yield x / other
-
-    def __floordiv__(self, other: Column | float) -> Generator:
+    def __floordiv__(self, other: Column | Iterable | Numeric) -> Generator:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | float
+        :param other: Column | Iterable | float | int
         :return: None
         """
-        if not self.data_is_numeric():
-            raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
+        if not isinstance(other, Iterable):
+            other = same_val_generator(val=other, size=len(self))
 
-        if isinstance(other, Column):
-            if not other.data_is_numeric():
-                raise TypeError(f'Unsupported operand for types {self.type} and {other.type}')
-
-            for x, y in zip(self, other):
+        for x, y in zip(self, other, strict=True):
+            if x is None:
+                yield x
+            else:
                 yield x // y
-        else:
-            if not isinstance(other, (int, float)):
-                raise TypeError(f'Cannot perform arithmetic operation with non-numerical data (type {self.type})')
-
-            for x in self:
-                yield x // other
 
     # TODO: complete expressions docstrings
     def __gt__(self, other: Numeric) -> Expression:
@@ -516,7 +480,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self._table}.{self._name} > {other} ')
+        return Expression(query=f'{self.name} > {other} ', table=self.table)
 
     def __ge__(self, other: Numeric) -> Expression:
         """
@@ -524,7 +488,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self._table}.{self._name} >= {other} ')
+        return Expression(query=f'{self.name} >= {other} ', table=self.table)
 
     def __lt__(self, other: Numeric) -> Expression:
         """
@@ -532,7 +496,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self._table}.{self._name} < {other} ')
+        return Expression(query=f'{self.name} < {other} ', table=self.table)
 
     def __le__(self, other: Numeric) -> Expression:
         """
@@ -540,27 +504,27 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self._table}.{self._name} <= {other} ')
+        return Expression(query=f'{self.name} <= {other} ', table=self.table)
 
-    def __eq__(self, other: BaseType) -> Expression:
+    def __eq__(self, other: BaseTypes) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
         if isinstance(other, str):
-            return Expression(query=f"{self._table}.{self._name} = '{other}' ")
-        return Expression(query=f'{self._table}.{self._name} = {other} ')
+            return Expression(query=f"{self.name} = '{other}' ", table=self.table)
+        return Expression(query=f'{self.name} = {other} ', table=self.table)
 
-    def __ne__(self, other: BaseType) -> Expression:
+    def __ne__(self, other: BaseTypes) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
         if isinstance(other, str):
-            return Expression(query=f"{self._table}.{self._name} != '{other}' ")
-        return Expression(query=f'{self._table}.{self._name} != {other} ')
+            return Expression(query=f"{self.name} != '{other}' ", table=self.table)
+        return Expression(query=f'{self.name} != {other} ', table=self.table)
 
     def isin(self, options: Sequence) -> Expression:
         """
@@ -570,7 +534,7 @@ class Column:
         """
         if not isinstance(options, tuple):
             options = tuple(options)
-        return Expression(query=f'{self._table}.{self._name} IN {options} ')
+        return Expression(query=f'{self.name} IN {options} ', table=self.table)
 
     def between(self, x: Numeric, y: Numeric) -> Expression:
         """
@@ -579,7 +543,7 @@ class Column:
         :param y: float
         :return: Expression
         """
-        return Expression(query=f'{self._table}.{self._name} BETWEEN {x} AND {y} ')
+        return Expression(query=f'{self.name} BETWEEN {x} AND {y} ', table=self.table)
 
     def like(self, regex: str) -> Expression:
         """
@@ -587,7 +551,7 @@ class Column:
         :param regex: str
         :return: Expression
         """
-        return Expression(query=f"{self._table}.{self._name} LIKE '{regex}' ")
+        return Expression(query=f"{self.name} LIKE '{regex}' ", table=self.table)
 
     def ilike(self, regex: str) -> Expression:
         """
@@ -595,4 +559,4 @@ class Column:
         :param regex: str
         :return: Expression
         """
-        return Expression(query=f"{self._table}.{self._name} ILIKE '{regex}' ")
+        return Expression(query=f"{self.name} ILIKE '{regex}' ", table=self.table)

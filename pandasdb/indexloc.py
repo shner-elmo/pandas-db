@@ -1,49 +1,59 @@
 from __future__ import annotations
 
-from typing import Any
-from collections.abc import Iterable
+from typing import Collection
+
+from . import table, column
+
+
+BaseTypes = str | int | float | bool | None
 
 
 class IndexLoc:
-    """
-    An object for indexing rows/ values in an iterable
-    You can pass an int (positive or negative),
-    a slice with start, stop, and step, for ex: 3:15 or 3:15:2,
-    or you can pass a list, ex: [1, 24, 2, -5, 9, 8, -1]
-    """
-    def __init__(self, it: Iterable, length: int) -> None:
-        """
-        Take an iterable and the length for it
+    def __init__(self, obj: table.Table | column.Column) -> None:
+        self.table = obj
+        self.len = len(obj)  # to avoid recomputing
 
-        :param it: iterable
-        :param length: int
+    def index_abs(self, idx: int) -> int:
         """
-        self.data = it
-        self.length = length
+        Return the absolute of an index
 
-    def _validate_idx(self, index: int) -> None:
+        if the given index is negative it will convert it to positive, for ex:
+        if the given index is -1 and the length of the table is 371 the method will return 371
+
+        :param idx: int
+        :return: int
+        """
+        if idx < 0:
+            return self.len + idx
+        return idx
+
+    def validate_index(self, idx: int) -> None:
         """
         Assert given index is above zero, and below or equal to length,
         else: raise IndexError
 
-        :param index: int, must be positive
+        :param idx: int, must be positive
         :raise IndexError: if not 0 <= index < length
         :return: None
         """
-        if not 0 <= index < self.length:
+        if not 0 <= idx < self.len:
             raise IndexError('Given index out of range')
 
-    def __getitem__(self, key: int | list | slice):  # -> list | tuple | str | int | float
+    @staticmethod
+    def sql_tuple(it: Collection) -> str:
         """
-        Get data by: index, list, or slice
+        Convert an iterable to an SQL-compatible tuple
 
-        Getitem supports three ways of indexing the iterable:
-        1) Singular Integer, ex: IndexIloc[0], IndexIloc[32], or with negative: IndexIloc[-12]
-        2) Passing a list of integers, ex: IndexIloc[[1, 22, 4, 3, 17, 38]], IndexIloc[[1, -4, 17, 22, 38, -4, -1]]
-        4) Passing Slice, ex: IndexIloc[:10], IndexIloc[2:8], IndexIloc[2:24:2]
+        if the len(tuple) == 1 then it will remove the comma
 
-        The return type depends on if the underlying object is a Table or Column,
-        and if the requested data is one or multiple items;
+        :param it: Collection, object that implements __len__ and __iter__
+        :return: str
+        """
+        return str(tuple(it)).replace(',', '') if len(it) == 1 else str(tuple(it))
+
+    def __getitem__(self, index: int | list | slice) -> tuple | list | BaseTypes:
+        """
+        Get row/value at given index
 
         if Table:
             if type(index) == int:
@@ -53,51 +63,51 @@ class IndexLoc:
 
         elif Column:
             if type(index) == int:
-                return str | int | float  # depending on the type of the data for the column
+                return BaseTypes #  (str | int | float | bool | None)  # depending on the underlying data in the column
             elif type(index) in [list, slice]:
-                return list
+                return list[BaseTypes]
 
-        :param key: int, list, or slice
-        :return:
+        :param index: int | list | slice
+        :return: tuple | list | BaseTypes
         """
-        # TODO: get data directly from through SQL and use ORDER BY x DESC for negative indexes
-        if not isinstance(key, (int, list, slice)):
-            raise TypeError(f'Index must be of type: int, list, or slice, not: {type(key)}')
+        if isinstance(index, int):
+            index = self.index_abs(index)
+            self.validate_index(index)
+            index += 1
 
-        if isinstance(key, int):
-            if key < 0:
-                key = self.length + key
+            query = f'{self.table.query} WHERE rowid == {index}'  # TODO add limit ?
+            with self.table.conn as cursor:
+                row = cursor.execute(query).fetchone()
+            return row if isinstance(self.table, table.Table) else row[0]
 
-            self._validate_idx(index=key)
-            for idx, val in enumerate(self.data):
-                if idx == key:
-                    return val
+        if isinstance(index, slice):
+            indices = index.indices(self.len)
+            indexes = [idx + 1 for idx in range(*indices)]
 
-        if isinstance(key, (list, slice)):
-            keys = key  # plural for readability
-            if isinstance(keys, slice):
-                indices = keys.indices(self.length)
-                keys = range(*indices)
+            query = f'{self.table.query} WHERE rowid IN {self.sql_tuple(indexes)}'
+            with self.table.conn as cursor:
+                rows = cursor.execute(query)
 
-            new_keys = []
-            # validate all indexes and convert negatives to positive
-            for idx in keys:
-                if idx < 0:
-                    idx = self.length + idx
+            return rows.fetchall() if isinstance(self.table, table.Table) else [tup[0] for tup in rows]
 
-                self._validate_idx(index=idx)
-                new_keys.append(idx)
+        if isinstance(index, list):
+            indexes = [self.index_abs(idx) for idx in index]
+            for idx in indexes:
+                self.validate_index(idx)
+            indexes = [idx + 1 for idx in indexes]
 
-            keys = new_keys
-            items: list[tuple[int, Any]] = []
+            base_query = self.table.query.replace("SELECT", "SELECT rowid,")
+            unique_indexes = set(indexes)
+            query = f'{base_query} WHERE rowid IN {self.sql_tuple(unique_indexes)}'
 
-            for idx, val in enumerate(self.data):
-                if idx in keys:
-                    for i in range(keys.count(idx)):
-                        items.append((idx, val))
+            with self.table.conn as cursor:
+                rows = cursor.execute(query)
 
-                    if len(items) == len(keys):
-                        break
+            if isinstance(self.table, table.Table):
+                idx_row_mapping: dict[int, tuple] = {row[0]: row[1:] for row in rows}
+            else:
+                idx_row_mapping: dict[int, tuple] = dict(rows)
 
-            items_dict = dict(items)
-            return [items_dict[x] for x in keys]
+            return [idx_row_mapping[idx] for idx in indexes]
+
+        raise TypeError(f'Index must be of type: int, list, or slice. not: {type(index)}')
