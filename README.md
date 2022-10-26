@@ -3,6 +3,8 @@
 ### A lightweight object for analyzing data directly from a Database without having to load anything onto memory
 
 ---
+[![Downloads](https://pepy.tech/badge/pandasdb2)](https://pepy.tech/project/pandasdb2)
+[![Downloads](https://pepy.tech/badge/pandasdb2/month)](https://pepy.tech/project/pandasdb2)
 
 You can get the package directly from [PyPI](https://pypi.org/project/pandasdb2/)
 ```
@@ -24,8 +26,8 @@ You can think of it as a wrapper for SQLite so there is no need to type SQL quer
 
 And to top it off, it makes it easy to import the tables from a database onto pandas for further analysis, for ex:
 ```python
-from pandasdb import DataBase
-db = DataBase(db_path='data/parch-and-posey.sql')
+from pandasdb import Database
+db = Database(db_path='data/parch-and-posey.sql')
 
 df1 = db.orders.to_df()
 df2 = db.accounts.to_df()
@@ -37,14 +39,14 @@ For the full tutorial click [here](#now-lets-dive-onto-the-pandasdb-package)
 ---
 ## Memory Usage
 
-Now let's visualize this and see the amount of memory a `DataBase` object consumes compared to a Pandas `DataFrame`
+Now let's visualize this and see the amount of memory a `Database` object consumes compared to a Pandas `DataFrame`
 
 Import the package:
 ```python
-from pandasdb import DataBase
+from pandasdb import Database
 ```
 ```python
-db = DataBase(db_path='data/forestation.db')
+db = Database(db_path='data/forestation.db')
 ```
 
 Using `asizeof.asizeof()` from the `pympler` package we can get the number of Bytes an object is taking in memory
@@ -94,7 +96,7 @@ db.exit()
 
 For example, this Database contains one table with almost twenty million rows:
 ```python
-db = DataBase(db_path='.../yfin_data.db')
+db = Database(db_path='.../yfin_data.db')
 print(f'tables={db.tables}')
 print(f'shape={db.stock_data.shape}')
 ```
@@ -127,7 +129,7 @@ gb_size(dataframe)
 ```
 6.961891 GB
 ```
-As you can see, while the DataBase object remains almost the same size the Dataframe increases exponentially.
+As you can see, while the Database object remains almost the same size the Dataframe increases exponentially.
 
 ---
 
@@ -135,12 +137,12 @@ As you can see, while the DataBase object remains almost the same size the Dataf
 
 Once you have the package installed, import the package:
 ```python
-from pandasdb import DataBase
+from pandasdb import Database
 ```
 
-To instantiate the DataBase class you need to pass the path to the Database file, which could be one of the following extensions: db, sql, or sqlite
+To instantiate the Database class you need to pass the path to the Database file, which could be one of the following extensions: db, sql, or sqlite
 ```python
-db = DataBase(db_path='data/forestation.db')
+db = Database(db_path='data/forestation.db')
 ```
 
 Get a list of all the tables 
@@ -329,7 +331,7 @@ db.exit()
 
 Now let's use another Database
 ```python
-db = DataBase(db_path='data/parch-and-posey.sql')
+db = Database(db_path='data/parch-and-posey.sql')
 
 for table in db.tables:
     print(table, db.get_columns(table_name=table))

@@ -10,7 +10,7 @@ BaseTypes = str | int | float | bool | None
 
 class IndexLoc:
     def __init__(self, obj: table.Table | column.Column) -> None:
-        self.table = obj
+        self.obj = obj
         self.len = len(obj)  # to avoid recomputing
 
     def index_abs(self, idx: int) -> int:
@@ -37,7 +37,7 @@ class IndexLoc:
         :return: None
         """
         if not 0 <= idx < self.len:
-            raise IndexError('Given index out of range')
+            raise IndexError(f'Given index out of range ({idx})')
 
     @staticmethod
     def sql_tuple(it: Collection) -> str:
@@ -75,20 +75,20 @@ class IndexLoc:
             self.validate_index(index)
             index += 1
 
-            query = f'{self.table.query} WHERE rowid == {index}'  # TODO add limit ?
-            with self.table.conn as cursor:
+            query = f'{self.obj.query} WHERE _rowid_ == {index}'  # TODO add limit ?
+            with self.obj.conn as cursor:
                 row = cursor.execute(query).fetchone()
-            return row if isinstance(self.table, table.Table) else row[0]
+            return row if isinstance(self.obj, table.Table) else row[0]
 
         if isinstance(index, slice):
             indices = index.indices(self.len)
             indexes = [idx + 1 for idx in range(*indices)]
 
-            query = f'{self.table.query} WHERE rowid IN {self.sql_tuple(indexes)}'
-            with self.table.conn as cursor:
+            query = f'{self.obj.query} WHERE _rowid_ IN {self.sql_tuple(indexes)}'  # LIMIT {len(indexes)}'
+            with self.obj.conn as cursor:
                 rows = cursor.execute(query)
 
-            return rows.fetchall() if isinstance(self.table, table.Table) else [tup[0] for tup in rows]
+            return rows.fetchall() if isinstance(self.obj, table.Table) else [tup[0] for tup in rows]
 
         if isinstance(index, list):
             indexes = [self.index_abs(idx) for idx in index]
@@ -96,14 +96,14 @@ class IndexLoc:
                 self.validate_index(idx)
             indexes = [idx + 1 for idx in indexes]
 
-            base_query = self.table.query.replace("SELECT", "SELECT rowid,")
+            base_query = self.obj.query.replace("SELECT", "SELECT _rowid_,")
             unique_indexes = set(indexes)
-            query = f'{base_query} WHERE rowid IN {self.sql_tuple(unique_indexes)}'
+            query = f'{base_query} WHERE _rowid_ IN {self.sql_tuple(unique_indexes)}'  # LIMIT {len(indexes)}'
 
-            with self.table.conn as cursor:
+            with self.obj.conn as cursor:
                 rows = cursor.execute(query)
 
-            if isinstance(self.table, table.Table):
+            if isinstance(self.obj, table.Table):
                 idx_row_mapping: dict[int, tuple] = {row[0]: row[1:] for row in rows}
             else:
                 idx_row_mapping: dict[int, tuple] = dict(rows)

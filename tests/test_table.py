@@ -3,7 +3,7 @@ from pandas import DataFrame
 import unittest
 from collections.abc import Generator
 
-from pandasdb import DataBase
+from pandasdb import Database
 from pandasdb.table import Table, IndexLoc
 from pandasdb.column import Column
 from pandasdb.exceptions import InvalidColumnError
@@ -20,7 +20,7 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestTable(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DataBase(MAIN_DATABASE, block_till_ready=True)
+        self.db = Database(MAIN_DATABASE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
 
         tables = self.db.tables
@@ -241,9 +241,9 @@ class TestTable(unittest.TestCase):
 
             attr_col = getattr(self.table, col)
             item_col = self.table[col]
-            self.assertEqual(attr_col, item_col)
+            self.assertEqual(id(attr_col), id(item_col))
 
-            self.assertEqual(col_obj, attr_col)
+            self.assertEqual(id(col_obj), id(attr_col))
 
     def test_hash(self):
         self.assertIsInstance(hash(self.table), int)

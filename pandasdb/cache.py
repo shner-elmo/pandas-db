@@ -58,6 +58,8 @@ class Cache(CacheDict):
 
         self.mb_size = 0
         self._ready_count = 0
+        # list of SQL views created after initialization (they will all get dropped in `connection.Database.exit()`)
+        self.views: list[str] = []
 
     @property
     def is_ready(self) -> bool:

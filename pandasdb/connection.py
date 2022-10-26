@@ -8,22 +8,22 @@ from typing import Generator, Any
 from threading import Thread
 from pathlib import Path
 
-from .utils import load_sql_to_sqlite, rename_duplicate_cols
+from .utils import convert_sql_to_db, rename_duplicate_cols, sqlite_conn_open
 from .table import Table
 from .exceptions import FileTypeError, InvalidTableError
 from .cache import Cache
 
 
-class DataBase:
+class Database:
     """
-    A class that represents a database, all the tables will be stored as attributes in the DataBase object,
+    A class that represents a database, all the tables will be stored as attributes in the Database object,
     and the columns will be stored as attributes in they're respective tables
     You can have a look at the README here: https://github.com/shner-elmo/pandas-db/blob/master/README.md
     """
     def __init__(self, db_path: str, cache: bool = True, populate_cache: bool = True, max_item_size: int = 2,
                  max_dict_size: int = 100, block_till_ready: bool = False) -> None:
         """
-        Initialize the DataBase object
+        Initialize the Database object
 
         The only required parameter is db_path, which takes a database file of type: db, sql, or sqlite.
 
@@ -58,17 +58,28 @@ class DataBase:
         :param block_till_ready: bool, default False
         """
         path = Path(db_path)
-        self.name = path.name
         self.db_path = db_path
 
         extension = path.suffix
         valid_extension = ('.sql', '.db', '.sqlite', '.sqlite3')
 
         if extension not in valid_extension:
-            raise FileTypeError(f'File extension must be one of the following: {valid_extension}')
+            raise FileTypeError(f'File extension must be one of the following: {", ".join(valid_extension)}')
 
-        if extension == '.sql':
-            self.conn = load_sql_to_sqlite(db_path)
+        if extension == '.sql':  # if .sql load to .db file and then connect
+            current_file_parts = Path(__file__).parent.parent.parts
+            folder = Path(*current_file_parts, 'pandasdb-local-databases')
+            file = Path(*folder.parts, path.stem + '.db')
+
+            if not folder.exists():
+                folder.mkdir()
+
+            files = [f.name for f in folder.iterdir()]
+            if file.name in files:
+                file.unlink()  # delete file and create a new one to update the data
+
+            convert_sql_to_db(sql_file=db_path, db_file=str(file))
+            self.conn = sqlite3.connect(str(file), check_same_thread=False)
         else:
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
 
@@ -94,17 +105,6 @@ class DataBase:
                 for thread in threads:
                     thread.join()
 
-    def exit(self) -> None:
-        """
-        Close DataBase connection, this should be called when you're done using the connection
-
-        :return: None
-        """
-        try:
-            self.conn.close()
-        except sqlite3.ProgrammingError:
-            warnings.warn('Connection already closed!')
-
     @property
     def tables(self) -> list[str]:
         """
@@ -112,7 +112,9 @@ class DataBase:
 
         :return: list with table names
         """
-        return [x[0] for x in self.cache.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        # avoid cache for tables added after
+        with self.conn as cursor:
+            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")]
 
     @property
     def views(self) -> list[str]:
@@ -123,8 +125,29 @@ class DataBase:
 
         :return: list with table names
         """
+        # avoid cache for tables added after
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
+
+    def drop_table(self, table_name: str) -> None:
+        """
+        Drop table
+
+        :param table_name: str
+        :return: None
+        """
+        with self.conn as cursor:
+            cursor.execute(f'DROP TABLE {table_name}')
+
+    def drop_view(self, table_name: str) -> None:
+        """
+        Drop view
+
+        :param table_name: str
+        :return: None
+        """
+        with self.conn as cursor:
+            cursor.execute(f'DROP VIEW {table_name}')
 
     def get_columns(self, table_name: str) -> list[str]:
         """
@@ -133,7 +156,7 @@ class DataBase:
         :param table_name: str
         :return: list with column names
         """
-        if table_name not in self.tables:
+        if table_name not in self.tables + self.views:
             raise InvalidTableError(f'No such table: {table_name}')
 
         return [x[1] for x in self.cache.execute(f"PRAGMA table_info('{table_name}')")]
@@ -167,9 +190,9 @@ class DataBase:
 
         return DataFrame(data=data, columns=cols)
 
-    def __enter__(self) -> 'DataBase':
+    def __enter__(self) -> 'Database':
         """
-        Return the instance of DataBase
+        Return the instance of Database
 
         :return: self
         """
@@ -185,6 +208,31 @@ class DataBase:
         :return: None
         """
         self.exit()
+
+    def __del__(self) -> None:
+        """
+        Perform cleanup as soon as the object is deleted
+
+        :return: None
+        """
+        if sqlite_conn_open(self.conn):
+            self.exit()
+
+    def exit(self) -> None:
+        """
+        Close Database connection, this should be called when you're done using the connection
+
+        :return: None
+        """
+        if sqlite_conn_open(self.conn):
+            for view in self.cache.views:
+                with self.conn as cursor:
+                    cursor.execute(f'DROP VIEW {view}')
+                    self.conn.commit()
+
+            self.conn.close()
+        else:
+            warnings.warn('Connection already closed!')
 
     def _set_table(self, table: str) -> None:
         """
@@ -221,7 +269,7 @@ class DataBase:
 
     def __getattribute__(self, item) -> Any:
         """ Get attribute """
-        # for avoiding 'Unresolved attribute' warnings, this somehow fixes it
+        # for avoiding 'Unresolved attribute' warnings (in Pycharm), this somehow fixes it
         return super().__getattribute__(item)
 
     def __len__(self) -> int:

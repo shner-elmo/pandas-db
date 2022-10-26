@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 from collections.abc import Generator
 
-from pandasdb import DataBase
+from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.column import Column
 from pandasdb.expression import Expression
@@ -18,13 +18,19 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestColumn(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DataBase(DB_FILE, block_till_ready=True)
+        self.db = Database(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
         column = self.table.columns[0]
         self.column: Column = self.table[column]
 
     def tearDown(self) -> None:
         self.db.exit()
+
+    def test_create_view(self):
+        pass
+
+    def test_create_from_query(self):
+        pass
 
     def test_type(self):
         for name, col in self.table.items():
@@ -118,9 +124,7 @@ class TestColumn(unittest.TestCase):
                 if col.data_is_numeric():
                     col_median = col.median()
                     ser_median = col.to_series().median()
-                    print(name)
                     self.assertAlmostEqual(ser_median, col_median, places=4)
-                    print(f'passed: {col_median=}, {ser_median=}')
                 else:
                     self.assertRaisesRegex(
                         TypeError,
@@ -144,7 +148,7 @@ class TestColumn(unittest.TestCase):
 
     def test_describe(self):
         for name, col in self.table.items():
-            col_dict = col.describe()
+            col_dict: dict[str, float] = col.describe()
             ser: Series = col.to_series()
 
             if col.data_is_numeric():
@@ -361,7 +365,7 @@ class TestColumnLogicalOp(unittest.TestCase):
     Test logical operators for Column objects (db.table.col >= 20, db.table.col.between(10, 25))
     """
     def setUp(self) -> None:
-        self.db = DataBase(DB_FILE, block_till_ready=True)
+        self.db = Database(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
         self.column: Column = getattr(self.table, self.table.columns[0])
         self.col: str = f'{self.column.name}'

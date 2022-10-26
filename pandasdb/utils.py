@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import pandas as pd
+import random
+import string
 from pympler import asizeof
 
 import sqlite3
 from pathlib import Path
-from typing import Generator, Iterable, Any, TypeVar, Protocol
+from typing import Generator, Iterable, Sequence, Any, TypeVar, Protocol
 
-BaseTypes = str | int | float
+PrimitiveTypes = str | int | float | bool | None
 T = TypeVar("T")
 TypeAny = TypeVar('TypeAny', bound=Any)
 
@@ -24,6 +26,109 @@ class SizedIterable(Protocol):
 
 # Unfortunately Pycharm doesn't support Protocol classes, so use Collection instead (for indexloc.sql_tuple)
 # https://stackoverflow.com/a/49434182/18042558
+
+
+def convert_type_to_sql(x: str | int | float | bool) -> str:
+    """
+    Function that takes a value (primitive type) and returns an SQL-compatible string
+
+    if type is str -> "'x'"
+    if type is int or float -> '3' | '3.2'
+    if type is bool -> 'true' | 'false'
+    if type is None -> 'null'
+
+    :param x: str | int | float | bool | None
+    :return: str
+    """
+    if isinstance(x, str):
+        return f"'{x}'"
+    if isinstance(x, (int, float)):
+        return str(x)
+    if isinstance(x, bool):
+        return 'true' if x else 'false'
+
+    raise TypeError(f'param x must be of type str, int, float, or bool. not: {type(x)}')
+
+
+def sql_tuple(it: Iterable) -> str:
+    """
+    Convert an iterable to an SQL-compatible tuple
+
+    :param it: Iterable
+    :return: str
+    """
+    return f'({", ".join(convert_type_to_sql(x) for x in it)})'
+
+
+# def un_nest_tuples(lst: list[tuple[Any]]) -> list[Any]:
+#     """
+#     Flatten a list of nested tuples (tuples can have only one element each)
+#
+#     :param lst: list of tuples
+#     :return: list of elements
+#     """
+#     return [tup[0] for tup in lst]
+
+
+def sqlite_conn_open(conn: sqlite3.Connection) -> bool:
+    """
+
+    :param conn:
+    :return:
+    """
+    try:
+        conn.cursor()
+        return True
+    except sqlite3.ProgrammingError:
+        return False
+
+
+def get_random_name(size: int = 10) -> str:
+    """
+    Get a string with random letters (from string.ascii_lowercase)
+
+    :param size: int, default 10
+    :return: str
+    """
+    return ''.join(random.choices(string.ascii_lowercase, k=size))
+
+
+def create_view(conn: sqlite3.Connection, view_name: str, query: str) -> None:
+    """
+    Create view from given sql query
+
+    :param conn: sqlite3 connection
+    :param view_name: str
+    :param query: str, select query
+    :raises: ValueError if view_name already exists
+    :return: None
+    """
+    with conn as cursor:
+        views: Iterable[str] = (x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'"))
+    if view_name in views:
+        raise ValueError(f"view '{view_name}' already exists")
+
+    with conn as cursor:
+        cursor.execute(f"CREATE VIEW {view_name} AS {query}")
+        conn.commit()
+
+
+# def cursor_execute(conn: sqlite3.Connection, sql: str) -> sqlite3.Cursor:
+#     """
+#     A function for testing sql queries
+#
+#     It returns a sqlite cursor, the most common methods for sqlite3.Cursor:
+#     Cursor.fetchall()  # get all results in a list
+#     Cursor.fetchone()  # get first result in a tuple
+#     and note that the cursor itself is an iterable/ generator,
+#     so there is no need to convert it to a list if you're not going to use all the elements
+#
+#     :param conn: sqlite connection
+#     :param sql: str, sql-query
+#     :return: sqlite cursor
+#     """
+#     with conn as cursor:
+#         return cursor.execute(sql)
 
 
 def same_val_generator(val: TypeAny, size: int) -> Generator[TypeAny, None, None]:
@@ -108,28 +213,37 @@ def convert_db_to_sql(db_file: str, sql_file: str) -> None:
     :param sql_file: str, path to .sql file
     :return:
     """
-    conn = sqlite3.connect(db_file)
-    with open(sql_file, 'w') as file:
-        for line in conn.iterdump():
-            file.write(line)
-    conn.close()
+    with sqlite3.connect(db_file) as conn:
+        with open(sql_file, 'w') as file:
+            for line in conn.iterdump():
+                file.write(line)
 
 
-def convert_csvs_to_db(db_file: str, csv_files: list) -> None:
+def convert_csvs_to_db(db_file: str, csv_files: list, set_lowercase: bool = True, **kwargs: Any) -> None:
     """
     convert a CSV list to a database (.db file)
 
+    if the param set_lowercase is true, it will rename the table and column names to lowercase
+    note that any column name that contains spaces or dashes will replace the characters with underscores,
+    for ex: 'first name' -> 'first_name'
+
     :param db_file: str, path/name to save new .db file
     :param csv_files: list, ex: ['orders.csv', 'names.csv', 'regions.csv'...]
+    :param set_lowercase: bool, default True
+    :param kwargs: key-word arguments to pass to pd.read_csv()
     :return: None
     """
-    conn = sqlite3.connect(db_file)
+    with sqlite3.connect(db_file) as conn:
 
-    for csv in csv_files:
-        df = pd.read_csv(csv)
-        name = Path(csv).stem
-        df.to_sql(name=name, con=conn, index=False)
-    conn.close()
+        for csv in csv_files:
+            df = pd.read_csv(csv, **kwargs)
+            df.columns = df.columns.str.replace(' ', '_').str.replace('-', '_')
+
+            if set_lowercase:
+                df.columns = df.columns.str.lower()
+
+            name = Path(csv).stem.replace(' ', '_').replace('-', '_')
+            df.to_sql(name=name, con=conn, index=False)
 
 
 def convert_sql_to_db(sql_file: str, db_file: str) -> None:
@@ -141,9 +255,8 @@ def convert_sql_to_db(sql_file: str, db_file: str) -> None:
     :return: None
     """
     with open(sql_file, 'r') as file:
-        conn = sqlite3.connect(db_file)
-        conn.executescript(file.read())
-    conn.close()
+        with sqlite3.connect(db_file) as conn:
+            conn.executescript(file.read())
 
 
 def load_sql_to_sqlite(sql_file: str) -> sqlite3.Connection:
@@ -156,4 +269,4 @@ def load_sql_to_sqlite(sql_file: str) -> sqlite3.Connection:
     with open(sql_file, 'r') as file:
         conn = sqlite3.connect(':memory:', check_same_thread=False)
         conn.executescript(file.read())
-    return conn
+        return conn

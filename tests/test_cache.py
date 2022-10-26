@@ -2,7 +2,7 @@ import unittest
 import sqlite3
 import time
 
-from pandasdb import DataBase
+from pandasdb import Database
 from pandasdb.cache import Cache, CacheDict
 
 
@@ -70,7 +70,7 @@ class TestCache(unittest.TestCase):
     def setUp(self) -> None:
         self.conn = sqlite3.connect(DB_FILE)
 
-        db = DataBase(DB_FILE, cache=True, block_till_ready=True)
+        db = Database(DB_FILE, cache=True, block_till_ready=True)
         table = db.tables[0]
         column = db[table].columns[0]
         self.table = db[table]
@@ -96,7 +96,7 @@ class TestCache(unittest.TestCase):
         self.assertIsInstance(out, bool)
         self.assertIs(out, False)
 
-        db = DataBase(DB_FILE, block_till_ready=False)
+        db = Database(DB_FILE, block_till_ready=False)
         self.assertIs(db.cache.is_ready, False)
 
         for _ in range(100):  # wait for cache dict to populate...  # TODO make dynamic ?
@@ -175,13 +175,13 @@ class TestCache(unittest.TestCase):
         self.assertEqual(len(cache), 2)
 
     def test_populate_table(self):
-        db = DataBase(db_path=DB_FILE, cache=True, populate_cache=False)
+        db = Database(db_path=DB_FILE, cache=True, populate_cache=False)
         table_keys = [
             # "PRAGMA table_info('{table}')",  # already called in Table.items()
             'SELECT COUNT(*) FROM {table}'
         ]
         column_keys = [
-            '{query} WHERE {column} NOT NULL LIMIT 1',
+            # '{query} WHERE {column} NOT NULL LIMIT 1',  # Column.median() now creates an SQL-view
             "PRAGMA table_info('{table}')",
             'SELECT COUNT(*) FROM {table}',
             'SELECT COUNT({column}) FROM {table}',

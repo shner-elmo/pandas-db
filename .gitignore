@@ -6,3 +6,4 @@ notes.txt
 dist
 pandasdb2.egg-info
 .mypy_cache/
+pandasdb-local-databases/

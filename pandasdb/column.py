@@ -5,13 +5,12 @@ from pandas import DataFrame, Series
 import sqlite3
 from typing import Generator, Callable, Any, Sequence, TypeVar, Iterable
 
-from .expression import Expression
+from .expression import Expression, OrderBy, Limit
 from .indexloc import IndexLoc
 from .cache import Cache
-from .utils import same_val_generator
+from .utils import same_val_generator, create_view, get_random_name, sql_tuple, convert_type_to_sql
 
-
-BaseTypes = str | int | float | bool | None
+PrimitiveTypes = str | int | float | bool | None
 Numeric = int | float
 T = TypeVar('T')
 
@@ -20,6 +19,7 @@ class Column:
     """
     An object that represents a column of a table within a DataBase
     """
+
     def __init__(self, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str) -> None:
         """
         Initialize the Column object
@@ -35,23 +35,22 @@ class Column:
         self.name = col_name
         self.query = f'SELECT {col_name} FROM {table_name}'
 
-    # TODO remove this and use view instead
-    @classmethod
-    def create_from_query(cls, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str,
-                          query: str) -> Column:
-        """
-        Return an instance of Column with a custom query
-
-        :param conn: sqlite3.Connection
-        :param cache: Cache, instance of Cache
-        :param table_name: str
-        :param col_name: str
-        :param query: str, SQL query
-        :return: Column instance
-        """
-        column = cls(conn=conn, cache=cache, table_name=table_name, col_name=col_name)
-        column._query = query
-        return column
+    # @classmethod
+    # def create_column_from_query(cls, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str,
+    #                              query: str) -> Column:
+    #     """
+    #     Return an instance of Column with a custom query
+    #
+    #     :param conn: sqlite3.Connection
+    #     :param cache: Cache, instance of Cache
+    #     :param table_name: str
+    #     :param col_name: str
+    #     :param query: str, SQL query
+    #     :return: Column instance
+    #     """
+    #     column = cls(conn=conn, cache=cache, table_name=table_name, col_name=col_name)
+    #     column.query = query
+    #     return column
 
     @property
     def type(self) -> type:
@@ -60,8 +59,7 @@ class Column:
 
         :return: type, str | int | float
         """
-        query = f'{self.query} WHERE {self.name} NOT NULL LIMIT 1'
-        out = self._cache.execute(query)[0][0]
+        out = self._cache.execute(f'{self.query} WHERE {self.name} IS NOT NULL LIMIT 1')[0][0]
         return type(out)
 
     @property
@@ -149,17 +147,17 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get median for Column of type {self.type}')
 
-        count = self.count()
-        if count % 2 == 0:
-            indexes = [count // 2, count // 2 + 1]
-            lst = [tup for tup in self.iloc[indexes]]
-            avg = sum(lst) / len(lst)
-            return avg
-        else:
-            idx = count // 2 + 1
-            return self.iloc[idx]
+        col = self.filter(self.__ne__(None), self.sort_values())  # filter None values and sort column
+        n = len(col)
+        mid = n // 2 - 1  # remove one since index starts at zero
 
-    def mode(self) -> dict[BaseTypes, int]:
+        if n % 2 == 0:
+            lst: list[Numeric] = col.iloc[[mid, mid + 1]]
+            return sum(lst) / 2
+        else:
+            return col.iloc[mid]
+
+    def mode(self) -> dict[PrimitiveTypes, int]:
         """
         Get the mode/s of the column as a dictionary; {'value': count}
 
@@ -207,7 +205,7 @@ class Column:
                 'unique': len(self.unique())
             }
 
-    def unique(self) -> list[BaseTypes]:
+    def unique(self) -> list[PrimitiveTypes]:
         """
         Get list with unique values
 
@@ -215,7 +213,7 @@ class Column:
         """
         return list(tup[0] for tup in self._cache.execute(f'SELECT DISTINCT {self.name} FROM {self.table}'))
 
-    def value_counts(self) -> dict[BaseTypes, int]:
+    def value_counts(self) -> dict[PrimitiveTypes, int]:
         """
         Get a dictionary with the count of each value in the Column
 
@@ -240,7 +238,7 @@ class Column:
         """
         return Series(data=iter(self), name=self.name)
 
-    def data(self, limit: int = None) -> list[BaseTypes]:
+    def data(self, limit: int = None) -> list[PrimitiveTypes]:
         """
         Get column-data
 
@@ -254,7 +252,7 @@ class Column:
                 return [tup[0] for tup in cursor.execute(self.query + f' LIMIT {limit}')]
             return [tup[0] for tup in cursor.execute(self.query)]
 
-    def sample(self, n: int = 10) -> list[BaseTypes]:
+    def sample(self, n: int = 10) -> list[PrimitiveTypes]:
         """
         Get a list of random values from the column
 
@@ -264,7 +262,7 @@ class Column:
         with self.conn as cursor:
             return [tup[0] for tup in cursor.execute(f'{self.query} ORDER BY RANDOM() LIMIT {n}')]
 
-    def apply(self, func: Callable[[BaseTypes, ...], T], *, ignore_na: bool = True,
+    def apply(self, func: Callable[[PrimitiveTypes, ...], T], *, ignore_na: bool = True,
               args: tuple = (), **kwargs: Any) -> Generator[T, None, None]:
         """
         Apply function on each cell in the column
@@ -309,25 +307,98 @@ class Column:
         """
         return IndexLoc(obj=self)
 
-    def filter(self, expression: Expression) -> Column:
+    def filter(self, expression: Expression = None, order_by: OrderBy = None, limit: Limit = None) -> Column:
         """
         Return a new Column object with the filtered data
 
+        - How it works:
+
+        It takes an Expression, which could be either as an instance of the Expression class, for ex:
+        `db.table.country.filter(Expression(query='country IN ("USA", "JPY", "ITA")'))`
+
+        or from using an operator on a Column object which will return an instance of Expression, for ex:
+        `col = db.table.col`
+        `col.filter(col > 35.93)` # return a new column with only records which have `col` above 35.93
+
+        or using Column.isin():
+        `countries = db.countries`
+        # return a column showing the population for the countries: USA, JPY, and ITA.
+        `countries.population.filter(countries.isin(("USA", "JPY", "ITA")))`
+
+        You can also pass the expression with square brackets to the column:
+        `col = db.table.col`
+        `col[col > 35.93]`
+
+        Once the expression is passed, an SQL view will be created with the query being:
+        "SELECT {col} FROM {table} WHERE {expression}"
+        and then a new Column instance is returned with the name being the view-name
+
+        the view name will start with '_col_` since the data within the table-view represents a column,
+        and we add 10 random letters to the name, so we can create other filters for the same column without
+        having to delete previous ones, or overwrite them.
+
+        note that the view name is store in a list (in self._cache.views) so when the user closes the connection
+        with `db.exit()`, all the views in the list will be dropped/ deleted.
+
+        A final note on 'ROW_NUMBER' in the SQL query;
+        for the `Column.iloc` to work we need to have a rowid column, sqlite3 has it builtin on each table,
+        meaning its auto-generated (but the user can overwrite it),
+        the issue is that since a VIEW isn't a table it doesn't have the rowid column.
+        so we are left with one option; select the `rowid` column from the table when creating the view,
+        but the issue with that is that the position of the rows no longer corresponds since the amount of rows
+        in each table is different,
+        so what I did instead is, create a column using the `ROW_NUMBER` function to get the index/id of each row,
+        and since I need to pass a column, I passed `rowid`.
+        So it will order the table by rowid, and then create the column using the `ROW_NUMBER` function,
+        and finally, alias the new column as 'rowid' so `self.iloc` can reference it and use it to get rows
+        by index position.
+
+        # TODO add docu for orderby and limit parameters
         :param expression: Expression
+        :param order_by: OrderBy
+        :param limit: Limit
         :return: Column instance
         """
-        with self.conn as cursor:
-            cursor.execute('CREATE VIEW ')
+        view_name = f'_col_{self.table}_{self.name}_{get_random_name(size=10)}_'
 
-        view_name = expression.query.replace(' ', '_')
-        view_query = f'{self.query} WHERE {expression.query}'
+        if order_by:
+            # shortcut for when order_by is not None, when using an order by statement,
+            # the _rowid_ needs to be reordered for the indexes to match the rows
+            query = f"""
+            SELECT 
+                ROW_NUMBER() OVER (ORDER BY {order_by.cols}) AS _rowid_, {self.name} 
+            FROM (SELECT _rowid_, {self.name} FROM {self.table}
+                {f"WHERE {expression.query}" if expression else ""}
+                {f"LIMIT {limit.limit}" if limit else ""})
+            """
+        else:
+            query = f"""
+            SELECT 
+                ROW_NUMBER() OVER (ORDER BY _rowid_) AS _rowid_,
+                {self.name}
+            FROM {self.table} 
+            """
+            if expression:
+                query += f' WHERE {expression.query}'
+            if limit:
+                query += f' LIMIT {limit.limit}'
 
-        with self.conn as cursor:
-            cursor.execute(f'CREATE VIEW {view_name} AS {view_query}')
+        create_view(
+            conn=self.conn,
+            view_name=view_name,
+            query=query
+        )
+        # --------------------------------------------
+        self._cache.views.append(view_name)  # save name to delete the SQL VIEW just before closing the connection
+        return ColumnView(
+            created_query=query,
+            conn=self.conn,
+            cache=self._cache,
+            table_name=view_name,
+            col_name=self.name
+        )
 
-        return Column(conn=self.conn, cache=self._cache, table_name=view_name, col_name=self.name)
-
-    def __getitem__(self, item: int | slice | list | Expression) -> Any:
+    def __getitem__(self, item: int | slice | list | Expression | tuple) -> Any:
         """
         Return index slice or filtered Column
 
@@ -344,17 +415,22 @@ class Column:
         col1 = db.table.col1
         col1[col1 > 10]
 
-        :param item: int | slice | list | Expression
+        You can optionally pass a OrderBy object, and/or a Limit object:
+        # TODO complete
+
+        :param item: int | slice | list | Expression | tuple
         :return: IndexLoc | Column
         """
         if isinstance(item, Expression):
             return self.filter(item)
+        elif isinstance(item, tuple):
+            return self.filter(*item)
         elif isinstance(item, (int, slice, list)):
             return self.iloc[item]
 
-        raise TypeError(f'param item must be of type Expression, int, slice, or list. not: {type(item)}')
+        raise TypeError(f'Argument must be of type Expression, int, slice, or list. not: {type(item)}')
 
-    def __iter__(self) -> Generator[BaseTypes, None, None]:
+    def __iter__(self) -> Generator[PrimitiveTypes, None, None]:
         """ Yield values from column """
         with self.conn as cursor:
             for i in cursor.execute(self.query):
@@ -379,9 +455,12 @@ class Column:
         """
         top_rows = 10
         bottom_rows = 10
+        n = len(self)
+
+        if top_rows > n:  # shortcut for small dataframes
+            return DataFrame(data=self.iloc[:], columns=[self.name])
 
         data = self.iloc[:top_rows] + self.iloc[-bottom_rows:]
-        n = len(self)
         index = list(range(top_rows)) + list(range(n - bottom_rows, n))
         return DataFrame(index=index, data=data, columns=[self.name])
 
@@ -506,25 +585,25 @@ class Column:
         """
         return Expression(query=f'{self.name} <= {other} ', table=self.table)
 
-    def __eq__(self, other: BaseTypes) -> Expression:
+    def __eq__(self, other: PrimitiveTypes) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
-        if isinstance(other, str):
-            return Expression(query=f"{self.name} = '{other}' ", table=self.table)
-        return Expression(query=f'{self.name} = {other} ', table=self.table)
+        if other is None:
+            return Expression(query=f'{self.name} IS NULL ', table=self.table)
+        return Expression(query=f'{self.name} = {convert_type_to_sql(other)} ', table=self.table)
 
-    def __ne__(self, other: BaseTypes) -> Expression:
+    def __ne__(self, other: PrimitiveTypes) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
-        if isinstance(other, str):
-            return Expression(query=f"{self.name} != '{other}' ", table=self.table)
-        return Expression(query=f'{self.name} != {other} ', table=self.table)
+        if other is None:
+            return Expression(query=f'{self.name} IS NOT NULL ', table=self.table)
+        return Expression(query=f'{self.name} != {convert_type_to_sql(other)} ', table=self.table)
 
     def isin(self, options: Sequence) -> Expression:
         """
@@ -532,8 +611,7 @@ class Column:
         :param options: tuple
         :return: Expression
         """
-        if not isinstance(options, tuple):
-            options = tuple(options)
+        options = sql_tuple(options)
         return Expression(query=f'{self.name} IN {options} ', table=self.table)
 
     def between(self, x: Numeric, y: Numeric) -> Expression:
@@ -560,3 +638,57 @@ class Column:
         :return: Expression
         """
         return Expression(query=f"{self.name} ILIKE '{regex}' ", table=self.table)
+
+    def not_null(self) -> Expression:
+        """
+        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
+
+        :return: Expression instance
+        """
+        return Expression(query=f'{self.name} IS NOT NULL', table=self.table)
+
+    def sort_values(self, ascending: bool = True) -> OrderBy:
+        """
+        Return a OrderBy object (which can be passed to column.filter())
+
+        :param ascending: bool, default True
+        :return: OrderBy instance
+        """
+        return OrderBy(column=self.name, ascending=ascending)
+
+    @staticmethod
+    def limit(limit: int) -> Limit:
+        """
+        Return a Limit object that limits the amount of rows in a column
+
+        (creates a view with: "SELECT ... LIMIT {limit})
+
+        :param limit: int
+        :return: Limit instance
+        """
+        return Limit(limit=limit)
+
+
+class ColumnView(Column):
+    """
+    A ColumnView is created everytime we filter an existing Column.
+    (from Column.filter() or Column[<expression>]
+    """
+
+    def __init__(self, created_query: str, conn: sqlite3.Connection, cache: Cache,
+                 table_name: str, col_name: str) -> None:
+        """
+        Initialize the Column object
+
+        :param created_query: str
+        :param conn: sqlite3.Connection
+        :param cache: Cache, instance of Cache
+        :param table_name: str
+        :param col_name: str
+        """
+        self._created_query = created_query  # save the query used in creating the column-view for debugging
+        self.conn = conn
+        self._cache = cache  # TODO move column objects to dict and make attributes public
+        self.table = table_name
+        self.name = col_name
+        self.query = f'SELECT {col_name} FROM {table_name}'

@@ -4,21 +4,21 @@ import unittest
 import sqlite3
 from collections.abc import Generator
 
-from pandasdb import DataBase
+from pandasdb import Database
 from pandasdb.table import Table
 
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
 SQLITE_FILE = '../data/mental_health.sqlite'
-MAIN_DATABASE = DB_FILE
+MAIN_Database = DB_FILE
 
 MIN_TABLES = 1
 
 
 class TestConnection(unittest.TestCase):
     def setUp(self):
-        self.db = DataBase(MAIN_DATABASE, block_till_ready=True)
+        self.db = Database(MAIN_Database, block_till_ready=True)
 
         tables = self.db.tables
         self.assertGreaterEqual(len(tables), MIN_TABLES,
@@ -31,22 +31,22 @@ class TestConnection(unittest.TestCase):
         pass
 
     def test_file_type_db(self):
-        db = DataBase(DB_FILE, block_till_ready=True)
+        db = Database(DB_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['forest_area', 'land_area', 'regions'])
         db.exit()
 
     def test_file_type_sql(self):
-        db = DataBase(SQL_FILE, block_till_ready=True)
+        db = Database(SQL_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
 
     def test_file_type_sqlite(self):
-        db = DataBase(SQLITE_FILE, block_till_ready=True)
+        db = Database(SQLITE_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['Answer', 'Question', 'Survey'])
         db.exit()
 
     def test_exit(self):
-        db = DataBase(MAIN_DATABASE, block_till_ready=True)
+        db = Database(MAIN_Database, block_till_ready=True)
         table = db.tables[0]
         db.exit()
 
@@ -91,8 +91,8 @@ class TestConnection(unittest.TestCase):
             self.assertIsInstance(table_object, Table)
 
     def test_query(self):
-        self.assertEqual(MAIN_DATABASE, '../data/forestation.db',
-                         msg="This test works only on this specific DataBase (forestation.db)")
+        self.assertEqual(MAIN_Database, '../data/forestation.db',
+                         msg="This test works only on this specific Database (forestation.db)")
         query = """
         SELECT * FROM forest_area
         JOIN regions
@@ -111,9 +111,9 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(df.columns.to_list(), renamed_cols)
 
     def test_context_manager(self):
-        with DataBase(MAIN_DATABASE, block_till_ready=True) as data_base:
+        with Database(MAIN_Database, block_till_ready=True) as data_base:
             table = data_base.tables[0]
-            self.assertIsInstance(data_base, DataBase)
+            self.assertIsInstance(data_base, Database)
 
         self.assertRaisesRegex(
             sqlite3.ProgrammingError,
@@ -145,7 +145,7 @@ class TestConnection(unittest.TestCase):
         as an attribute because that name is already reserved for the SQL connection,
         so in this case you will have to access it like a dictionary: db['conn']
 
-        If a table is added to the DataBase after initializing the instance, only once the user
+        If a table is added to the Database after initializing the instance, only once the user
         tries to get it (from __getitem__ or __getattribute__) then it will be created
         and stored in the instance.
 
