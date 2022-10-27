@@ -19,7 +19,6 @@ class Column:
     """
     An object that represents a column of a table within a DataBase
     """
-
     def __init__(self, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str) -> None:
         """
         Initialize the Column object
@@ -30,27 +29,10 @@ class Column:
         :param col_name: str
         """
         self.conn = conn
-        self._cache = cache  # TODO move column objects to dict and make attributes public
+        self._cache = cache
         self.table = table_name
         self.name = col_name
         self.query = f'SELECT {col_name} FROM {table_name}'
-
-    # @classmethod
-    # def create_column_from_query(cls, conn: sqlite3.Connection, cache: Cache, table_name: str, col_name: str,
-    #                              query: str) -> Column:
-    #     """
-    #     Return an instance of Column with a custom query
-    #
-    #     :param conn: sqlite3.Connection
-    #     :param cache: Cache, instance of Cache
-    #     :param table_name: str
-    #     :param col_name: str
-    #     :param query: str, SQL query
-    #     :return: Column instance
-    #     """
-    #     column = cls(conn=conn, cache=cache, table_name=table_name, col_name=col_name)
-    #     column.query = query
-    #     return column
 
     @property
     def type(self) -> type:
@@ -147,7 +129,7 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get median for Column of type {self.type}')
 
-        col = self.filter(self.__ne__(None), self.sort_values())  # filter None values and sort column
+        col = self.not_null().sort_values()  # filter None values and sort column
         n = len(col)
         mid = n // 2 - 1  # remove one since index starts at zero
 
@@ -229,6 +211,34 @@ class Column:
         ORDER BY 2 DESC, 1 ASC
         """
         return dict(self._cache.execute(query))
+
+    def not_null(self) -> Column:
+        """
+        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
+
+        :return: Expression instance
+        """
+        return self.filter(expression=Expression(query=f'{self.name} IS NOT NULL', table=self.table))
+
+    def sort_values(self, ascending: bool = True) -> Column:
+        """
+        Return a OrderBy object (which can be passed to column.filter())
+
+        :param ascending: bool, default True
+        :return: OrderBy instance
+        """
+        return self.filter(order_by=OrderBy(column=self.name, ascending=ascending))
+
+    def limit(self, limit: int) -> Column:
+        """
+        Return a Limit object that limits the amount of rows in a column
+
+        (creates a view with: "SELECT ... LIMIT {limit})
+
+        :param limit: int
+        :return: Limit instance
+        """
+        return self.filter(limit=Limit(limit=limit))
 
     def to_series(self) -> Series:
         """
@@ -388,7 +398,7 @@ class Column:
             view_name=view_name,
             query=query
         )
-        # --------------------------------------------
+
         self._cache.views.append(view_name)  # save name to delete the SQL VIEW just before closing the connection
         return ColumnView(
             created_query=query,
@@ -639,42 +649,12 @@ class Column:
         """
         return Expression(query=f"{self.name} ILIKE '{regex}' ", table=self.table)
 
-    def not_null(self) -> Expression:
-        """
-        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
-
-        :return: Expression instance
-        """
-        return Expression(query=f'{self.name} IS NOT NULL', table=self.table)
-
-    def sort_values(self, ascending: bool = True) -> OrderBy:
-        """
-        Return a OrderBy object (which can be passed to column.filter())
-
-        :param ascending: bool, default True
-        :return: OrderBy instance
-        """
-        return OrderBy(column=self.name, ascending=ascending)
-
-    @staticmethod
-    def limit(limit: int) -> Limit:
-        """
-        Return a Limit object that limits the amount of rows in a column
-
-        (creates a view with: "SELECT ... LIMIT {limit})
-
-        :param limit: int
-        :return: Limit instance
-        """
-        return Limit(limit=limit)
-
 
 class ColumnView(Column):
     """
     A ColumnView is created everytime we filter an existing Column.
     (from Column.filter() or Column[<expression>]
     """
-
     def __init__(self, created_query: str, conn: sqlite3.Connection, cache: Cache,
                  table_name: str, col_name: str) -> None:
         """
@@ -688,7 +668,7 @@ class ColumnView(Column):
         """
         self._created_query = created_query  # save the query used in creating the column-view for debugging
         self.conn = conn
-        self._cache = cache  # TODO move column objects to dict and make attributes public
+        self._cache = cache
         self.table = table_name
         self.name = col_name
         self.query = f'SELECT {col_name} FROM {table_name}'

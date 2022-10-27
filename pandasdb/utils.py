@@ -7,7 +7,7 @@ from pympler import asizeof
 
 import sqlite3
 from pathlib import Path
-from typing import Generator, Iterable, Sequence, Any, TypeVar, Protocol
+from typing import Generator, Iterable, Any, TypeVar, Protocol
 
 PrimitiveTypes = str | int | float | bool | None
 T = TypeVar("T")

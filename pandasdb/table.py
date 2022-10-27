@@ -3,13 +3,13 @@ from __future__ import annotations
 from pandas import DataFrame
 
 import sqlite3
-from typing import Generator, Callable, Any, Literal
+from typing import Generator, Callable, Any
 
 from .exceptions import InvalidColumnError
 from .column import Column
 from .indexloc import IndexLoc
 from .cache import Cache
-from .expression import Expression, OrderBy, Limit
+from .expression import Expression
 from .utils import create_view, get_random_name
 
 
@@ -29,10 +29,10 @@ class Table:
         self._cache = cache
         self.name = name
         self.query = f'SELECT * FROM {self.name}'
+        self._column_items: dict[str, Column] = {}
 
-        # TODO store columns in dict, and change self.items() implementation
-        for col in self.columns:
-            setattr(self, col, Column(conn=self.conn, cache=self._cache, table_name=self.name, col_name=col))
+        for column in self.columns:
+            self._set_column(column)
 
     @property
     def columns(self) -> list[str]:
@@ -96,8 +96,7 @@ class Table:
         """
         Generator that yields: (column_name, col_object)
         """
-        for col in self.columns:
-            yield col, getattr(self, col)
+        yield from self._column_items.items()
 
     def applymap(self, func: Callable, *, ignore_na: bool = True,
                  args: tuple = tuple(), **kwargs) -> Generator[tuple, None, None]:
@@ -162,31 +161,9 @@ class Table:
         self._cache.views.append(view_name)
         return TableView(conn=self.conn, cache=self._cache, name=view_name)
 
-    # def join(self, table2join: Table | str,  *, on: str = None, left_on: str = None, right_on: str = None, how: str,
-    #          select_cols: list = None, suffixes: tuple = ('_self.', '_'), view_name: str = None) -> TableView:
-    #     """"""
-    #     table2join = Table
-    #     if on is not None:
-    #         join_statement = f'{on} == {on}'
-    #     elif left_on is not None and right_on is not None:
-    #         join_statement = f'{left_on} == {right_on}'
-    #     else:
-    #         raise ValueError("Must provide either 'on' parameter, or 'left_on' and 'right_on'")
-    #
-    #     select_cols = select_cols or ['*']
-    #     view_name = view_name or f'_join_table_{self.name}_{get_random_name(size=10)}_'
-    #
-    #     query = f"""
-    #     SELECT {select_cols} FROM {self.name}
-    #     JOIN ON {join_statement}
-    #     """
-    #     create_view(
-    #         conn=self.conn,
-    #         view_name=view_name,
-    #         query=query
-    #     )
-    #     self._cache.views.append(view_name)
-    #     return TableView(conn=self.conn, cache=self._cache, name=view_name)
+    # def sort_values(self, columns: list[str]) -> TableView:
+    #     create_view(conn=self.conn, )
+    #     return TableView(conn=self.conn, cache=self._cache, name=self.name)
 
     def __iter__(self) -> Generator[tuple, None, None]:
         """
@@ -206,6 +183,19 @@ class Table:
         if column not in self.columns:
             raise InvalidColumnError(f'Column must be one of the following: {", ".join(self.columns)}')
         return getattr(self, column)
+
+    def _set_column(self, column: str) -> None:
+        """
+        Create and cache column object
+
+        :param column: str
+        :return: None
+        """
+        col_obj = Column(conn=self.conn, cache=self._cache, table_name=self.name, col_name=column)
+        self._column_items[column] = col_obj
+
+        if not hasattr(self, column):  # to avoid overwriting existing attributes and methods
+            setattr(self, column, col_obj)
 
     # TODO: add option for list of items/columns and return new Table object with selected columns
     def __getitem__(self, item: str | Expression) -> Column | Table:
@@ -297,10 +287,10 @@ class TableView(Table):
         self.conn = conn
         self._cache = cache
         self.name = name
+        self._column_items: dict[str, Column] = {}
 
-        # TODO store columns in dict, and change self.items() implementation
-        for col in self.columns:
-            setattr(self, col, Column(conn=self.conn, cache=self._cache, table_name=self.name, col_name=col))
+        for column in self.columns:
+            self._set_column(column)
 
     @property
     def query(self) -> str:

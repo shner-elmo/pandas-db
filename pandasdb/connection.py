@@ -129,25 +129,27 @@ class Database:
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
 
-    def drop_table(self, table_name: str) -> None:
+    def drop_tables(self, *tables: str) -> None:
         """
-        Drop table
+        Drop SQL tables
 
-        :param table_name: str
+        :param tables: args, str
         :return: None
         """
-        with self.conn as cursor:
-            cursor.execute(f'DROP TABLE {table_name}')
+        for table in tables:
+            with self.conn as cursor:
+                cursor.execute(f'DROP TABLE {table}')
 
-    def drop_view(self, table_name: str) -> None:
+    def drop_views(self, *tables: str) -> None:
         """
-        Drop view
+        Drop SQL Views
 
-        :param table_name: str
+        :param tables: args, str
         :return: None
         """
-        with self.conn as cursor:
-            cursor.execute(f'DROP VIEW {table_name}')
+        for table in tables:
+            with self.conn as cursor:
+                cursor.execute(f'DROP VIEW {table}')
 
     def get_columns(self, table_name: str) -> list[str]:
         """

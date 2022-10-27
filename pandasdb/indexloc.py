@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Collection
+from typing import Collection, Any
 
 from . import table, column
 
 
-BaseTypes = str | int | float | bool | None
+PrimitiveTypes = str | int | float | bool | None
 
 
 class IndexLoc:
@@ -51,7 +51,7 @@ class IndexLoc:
         """
         return str(tuple(it)).replace(',', '') if len(it) == 1 else str(tuple(it))
 
-    def __getitem__(self, index: int | list | slice) -> tuple | list | BaseTypes:
+    def __getitem__(self, index: int | list | slice) -> tuple | list | PrimitiveTypes:
         """
         Get row/value at given index
 
@@ -75,7 +75,7 @@ class IndexLoc:
             self.validate_index(index)
             index += 1
 
-            query = f'{self.obj.query} WHERE _rowid_ == {index}'  # TODO add limit ?
+            query = f'{self.obj.query} WHERE _rowid_ == {index}'
             with self.obj.conn as cursor:
                 row = cursor.execute(query).fetchone()
             return row if isinstance(self.obj, table.Table) else row[0]
@@ -84,7 +84,7 @@ class IndexLoc:
             indices = index.indices(self.len)
             indexes = [idx + 1 for idx in range(*indices)]
 
-            query = f'{self.obj.query} WHERE _rowid_ IN {self.sql_tuple(indexes)}'  # LIMIT {len(indexes)}'
+            query = f'{self.obj.query} WHERE _rowid_ IN {self.sql_tuple(indexes)}'
             with self.obj.conn as cursor:
                 rows = cursor.execute(query)
 
@@ -98,7 +98,7 @@ class IndexLoc:
 
             base_query = self.obj.query.replace("SELECT", "SELECT _rowid_,")
             unique_indexes = set(indexes)
-            query = f'{base_query} WHERE _rowid_ IN {self.sql_tuple(unique_indexes)}'  # LIMIT {len(indexes)}'
+            query = f'{base_query} WHERE _rowid_ IN {self.sql_tuple(unique_indexes)}'
 
             with self.obj.conn as cursor:
                 rows = cursor.execute(query)
@@ -106,7 +106,7 @@ class IndexLoc:
             if isinstance(self.obj, table.Table):
                 idx_row_mapping: dict[int, tuple] = {row[0]: row[1:] for row in rows}
             else:
-                idx_row_mapping: dict[int, tuple] = dict(rows)
+                idx_row_mapping: dict[int, Any] = dict(rows)
 
             return [idx_row_mapping[idx] for idx in indexes]
 
