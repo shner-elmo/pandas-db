@@ -17,3 +17,8 @@ class InvalidColumnError(Exception):
 class ExpressionError(Exception):
     """ Raised when trying to use an instance of Expression with a non-Expression instance """
     pass
+
+
+class ConnectionClosedWarning(Warning):
+    """ Raised when using a closed SQL connection """
+    pass

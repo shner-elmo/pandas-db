@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Collection, Any
+from typing import Any
 
-from . import table, column
+from . import table, column, utils
 
 
 PrimitiveTypes = str | int | float | bool | None
@@ -39,18 +39,6 @@ class IndexLoc:
         if not 0 <= idx < self.len:
             raise IndexError(f'Given index out of range ({idx})')
 
-    @staticmethod
-    def sql_tuple(it: Collection) -> str:
-        """
-        Convert an iterable to an SQL-compatible tuple
-
-        if the len(tuple) == 1 then it will remove the comma
-
-        :param it: Collection, object that implements __len__ and __iter__
-        :return: str
-        """
-        return str(tuple(it)).replace(',', '') if len(it) == 1 else str(tuple(it))
-
     def __getitem__(self, index: int | list | slice) -> tuple | list | PrimitiveTypes:
         """
         Get row/value at given index
@@ -84,7 +72,7 @@ class IndexLoc:
             indices = index.indices(self.len)
             indexes = [idx + 1 for idx in range(*indices)]
 
-            query = f'{self.obj.query} WHERE _rowid_ IN {self.sql_tuple(indexes)}'
+            query = f'{self.obj.query} WHERE _rowid_ IN {utils.sql_tuple(indexes)}'
             with self.obj.conn as cursor:
                 rows = cursor.execute(query)
 
@@ -98,7 +86,7 @@ class IndexLoc:
 
             base_query = self.obj.query.replace("SELECT", "SELECT _rowid_,")
             unique_indexes = set(indexes)
-            query = f'{base_query} WHERE _rowid_ IN {self.sql_tuple(unique_indexes)}'
+            query = f'{base_query} WHERE _rowid_ IN {utils.sql_tuple(unique_indexes)}'
 
             with self.obj.conn as cursor:
                 rows = cursor.execute(query)

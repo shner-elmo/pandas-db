@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .utils import convert_sql_to_db, rename_duplicate_cols, sqlite_conn_open
 from .table import Table
-from .exceptions import FileTypeError, InvalidTableError
+from .exceptions import FileTypeError, InvalidTableError, ConnectionClosedWarning
 from .cache import Cache
 
 
@@ -129,7 +129,7 @@ class Database:
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
 
-    def drop_tables(self, *tables: str) -> None:
+    def drop_table(self, *tables: str) -> None:
         """
         Drop SQL tables
 
@@ -140,7 +140,7 @@ class Database:
             with self.conn as cursor:
                 cursor.execute(f'DROP TABLE {table}')
 
-    def drop_views(self, *tables: str) -> None:
+    def drop_view(self, *tables: str) -> None:
         """
         Drop SQL Views
 
@@ -217,7 +217,7 @@ class Database:
 
         :return: None
         """
-        if sqlite_conn_open(self.conn):
+        if hasattr(self, 'conn') and sqlite_conn_open(self.conn):
             self.exit()
 
     def exit(self) -> None:
@@ -227,14 +227,10 @@ class Database:
         :return: None
         """
         if sqlite_conn_open(self.conn):
-            for view in self.cache.views:
-                with self.conn as cursor:
-                    cursor.execute(f'DROP VIEW {view}')
-                    self.conn.commit()
-
+            self.drop_view(*self.cache.views)
             self.conn.close()
         else:
-            warnings.warn('Connection already closed!')
+            warnings.warn('Connection already closed!', ConnectionClosedWarning)
 
     def _set_table(self, table: str) -> None:
         """

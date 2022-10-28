@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import pandas as pd
-import random
-import string
 from pympler import asizeof
 
+import random
+import string
 import sqlite3
 from pathlib import Path
 from typing import Generator, Iterable, Any, TypeVar, Protocol
@@ -35,17 +35,16 @@ def convert_type_to_sql(x: str | int | float | bool) -> str:
     if type is str -> "'x'"
     if type is int or float -> '3' | '3.2'
     if type is bool -> 'true' | 'false'
-    if type is None -> 'null'
 
-    :param x: str | int | float | bool | None
+    :param x: str | int | float | bool
     :return: str
     """
     if isinstance(x, str):
         return f"'{x}'"
+    if isinstance(x, bool):  # above int because bool inherits from int
+        return str(x).lower()
     if isinstance(x, (int, float)):
         return str(x)
-    if isinstance(x, bool):
-        return 'true' if x else 'false'
 
     raise TypeError(f'param x must be of type str, int, float, or bool. not: {type(x)}')
 
@@ -60,21 +59,12 @@ def sql_tuple(it: Iterable) -> str:
     return f'({", ".join(convert_type_to_sql(x) for x in it)})'
 
 
-# def un_nest_tuples(lst: list[tuple[Any]]) -> list[Any]:
-#     """
-#     Flatten a list of nested tuples (tuples can have only one element each)
-#
-#     :param lst: list of tuples
-#     :return: list of elements
-#     """
-#     return [tup[0] for tup in lst]
-
-
 def sqlite_conn_open(conn: sqlite3.Connection) -> bool:
     """
+    Return True if connection is open, else: False
 
-    :param conn:
-    :return:
+    :param conn: sqlite3.Connection
+    :return: bool
     """
     try:
         conn.cursor()
@@ -93,42 +83,30 @@ def get_random_name(size: int = 10) -> str:
     return ''.join(random.choices(string.ascii_lowercase, k=size))
 
 
-def create_view(conn: sqlite3.Connection, view_name: str, query: str) -> None:
+# TODO move to connection.Database
+def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_exists: bool = False) -> None:
     """
     Create view from given sql query
 
     :param conn: sqlite3 connection
     :param view_name: str
     :param query: str, select query
+    :param drop_if_exists: bool, default False
     :raises: ValueError if view_name already exists
     :return: None
     """
     with conn as cursor:
         views: Iterable[str] = (x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'"))
+
     if view_name in views:
-        raise ValueError(f"view '{view_name}' already exists")
+        if drop_if_exists:
+            with conn as cursor:
+                cursor.execute(f'DROP VIEW {view_name}')
+        else:
+            raise ValueError(f"view '{view_name}' already exists")
 
     with conn as cursor:
         cursor.execute(f"CREATE VIEW {view_name} AS {query}")
-        conn.commit()
-
-
-# def cursor_execute(conn: sqlite3.Connection, sql: str) -> sqlite3.Cursor:
-#     """
-#     A function for testing sql queries
-#
-#     It returns a sqlite cursor, the most common methods for sqlite3.Cursor:
-#     Cursor.fetchall()  # get all results in a list
-#     Cursor.fetchone()  # get first result in a tuple
-#     and note that the cursor itself is an iterable/ generator,
-#     so there is no need to convert it to a list if you're not going to use all the elements
-#
-#     :param conn: sqlite connection
-#     :param sql: str, sql-query
-#     :return: sqlite cursor
-#     """
-#     with conn as cursor:
-#         return cursor.execute(sql)
 
 
 def same_val_generator(val: TypeAny, size: int) -> Generator[TypeAny, None, None]:
