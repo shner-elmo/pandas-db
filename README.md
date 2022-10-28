@@ -3,6 +3,7 @@
 ### A lightweight object for analyzing data directly from a Database without having to load anything onto memory
 
 ---
+[![PyPi](https://img.shields.io/badge/PyPi-2.0.1-yellow)](https://pypi.org/project/pandasdb2/)
 [![Downloads](https://pepy.tech/badge/pandasdb2)](https://pepy.tech/project/pandasdb2)
 [![Downloads](https://pepy.tech/badge/pandasdb2/month)](https://pepy.tech/project/pandasdb2)
 

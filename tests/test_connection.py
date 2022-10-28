@@ -6,7 +6,8 @@ from collections.abc import Generator
 
 from pandasdb import Database
 from pandasdb.table import Table
-
+from pandasdb.exceptions import FileTypeError, ConnectionClosedWarning
+from pandasdb.utils import create_view
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -28,33 +29,38 @@ class TestConnection(unittest.TestCase):
         self.db.exit()
 
     def test_init(self):
-        pass
+        valid_extension = ('.sql', '.db', '.sqlite', '.sqlite3')
 
-    def test_file_type_db(self):
-        db = Database(DB_FILE, block_till_ready=True)
-        self.assertListEqual(db.tables, ['forest_area', 'land_area', 'regions'])
-        db.exit()
+        self.assertRaisesRegex(
+            FileTypeError,
+            f'File extension must be one of the following: {", ".join(valid_extension)}',
+            Database, db_path='my_db.txt', block_till_ready=True
+        )
+        self.assertRaisesRegex(
+            FileTypeError,
+            f'File extension must be one of the following: {", ".join(valid_extension)}',
+            Database, db_path='my_db.csv', block_till_ready=True
+        )
 
-    def test_file_type_sql(self):
+        # test file type sql:
         db = Database(SQL_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
 
-    def test_file_type_sqlite(self):
+        # run same test again after creating/caching .db file
+        db = Database(SQL_FILE, block_till_ready=True)
+        self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
+        db.exit()
+
+        # test file type db:
+        db = Database(DB_FILE, block_till_ready=True)
+        self.assertListEqual(db.tables, ['forest_area', 'land_area', 'regions'])
+        db.exit()
+
+        # test file type sqlite:
         db = Database(SQLITE_FILE, block_till_ready=True)
         self.assertListEqual(db.tables, ['Answer', 'Question', 'Survey'])
         db.exit()
-
-    def test_exit(self):
-        db = Database(MAIN_Database, block_till_ready=True)
-        table = db.tables[0]
-        db.exit()
-
-        self.assertRaisesRegex(
-            sqlite3.ProgrammingError,
-            '^Cannot operate on a closed database.$',
-            db.query, f"SELECT * FROM {table}"
-        )
 
     def test_tables(self):
         out = self.db.tables
@@ -76,6 +82,26 @@ class TestConnection(unittest.TestCase):
         views = set(self.db.views)
         shared_items = tables & views
         self.assertEqual(len(shared_items), 0)
+
+    def test_drop_table(self):
+        table_name = 'stock_data'
+        with self.db.conn as cursor:
+            cursor.execute(f"CREATE TABLE {table_name} (symbol TEXT, price REAL, volume INTEGER)")
+
+        self.assertTrue(table_name in self.db.tables)
+        self.db.drop_table(table_name)
+        self.assertTrue(table_name not in self.db.tables)
+
+    def test_drop_view(self):
+        view_name = 'test_view1'
+        create_view(
+            conn=self.db.conn,
+            view_name=view_name,
+            query=f'SELECT * FROM {self.db.tables[0]}'
+        )
+        self.assertTrue(view_name in self.db.views)
+        self.db.drop_view(view_name)
+        self.assertTrue(view_name not in self.db.views)
 
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])
@@ -119,6 +145,22 @@ class TestConnection(unittest.TestCase):
             sqlite3.ProgrammingError,
             '^Cannot operate on a closed database.$',
             data_base.query, f"SELECT * FROM {table}"
+        )
+
+    def test_exit(self):
+        db = Database(MAIN_Database, block_till_ready=True)
+        table = db.tables[0]
+        db.exit()
+
+        self.assertRaisesRegex(
+            sqlite3.ProgrammingError,
+            '^Cannot operate on a closed database.$',
+            db.query, f"SELECT * FROM {table}"
+        )
+        self.assertWarnsRegex(
+            ConnectionClosedWarning,
+            'Connection already closed!',
+            db.exit
         )
 
     def test_set_table(self):
