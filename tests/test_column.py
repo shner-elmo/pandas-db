@@ -368,7 +368,6 @@ class TestColumnLogicalOp(unittest.TestCase):
         self.db = Database(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
         self.column: Column = getattr(self.table, self.table.columns[0])
-        self.col: str = f'{self.column.name}'
 
     def tearDown(self) -> None:
         self.db.exit()
@@ -376,7 +375,7 @@ class TestColumnLogicalOp(unittest.TestCase):
     def test_gt(self):
         exp = self.column > 12.32
         self.assertIsInstance(exp, Expression)
-        self.assertEqual(exp.query, self.col + f' > 12.32 ')
+        self.assertEqual(exp.query, f'{self.column.name} > 12.32 ')
 
     # TODO: finish Expression tests
     def test_ge(self):

@@ -83,15 +83,6 @@ class TestConnection(unittest.TestCase):
         shared_items = tables & views
         self.assertEqual(len(shared_items), 0)
 
-    def test_drop_table(self):
-        table_name = 'stock_data'
-        with self.db.conn as cursor:
-            cursor.execute(f"CREATE TABLE {table_name} (symbol TEXT, price REAL, volume INTEGER)")
-
-        self.assertTrue(table_name in self.db.tables)
-        self.db.drop_table(table_name)
-        self.assertTrue(table_name not in self.db.tables)
-
     def test_drop_view(self):
         view_name = 'test_view1'
         create_view(

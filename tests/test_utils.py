@@ -1,5 +1,4 @@
 import unittest
-import sqlite3
 
 from pandasdb.utils import *
 
@@ -49,10 +48,17 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(len(random_names), 6)
 
     def test_create_view(self):
+        def get_views() -> list:
+            with conn as cursor:
+                return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
+
         conn = sqlite3.connect(DB_FILE)
         name = f'test_view_{get_random_name()}'
         query = 'SELECT * FROM forest_area LIMIT 50'
+
+        self.assertNotIn(member=name, container=get_views())
         create_view(conn=conn, view_name=name, query=query, drop_if_exists=True)
+        self.assertIn(member=name, container=get_views())
 
         with conn as cur:
             view_data: list[tuple[Any]] = cur.execute(f'SELECT * FROM {name}').fetchall()
@@ -64,7 +70,12 @@ class TestUtils(unittest.TestCase):
             f"view '{name}' already exists",
             create_view, conn=conn, view_name=name, query=query, drop_if_exists=False
         )
-        # TODO complete test
+
+        create_view(conn=conn, view_name=name, query=query, drop_if_exists=True)
+        self.assertIn(member=name, container=get_views())
+
+        with conn as cur:  # cleanup after test
+            cur.execute(f'DROP VIEW {name}')
 
     def test_same_val_generator(self):
         val = random.random()
@@ -85,13 +96,43 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(x, val)
 
     def test_concat(self):
-        pass
+        first = ['jake', 'carla', 'francis', 'john']
+        last = ['snake', 'louie', 'ngannou', 'cash']
+        out = ['jake snake',  'carla louie', 'francis ngannou', 'john cash']
+
+        # make sure each element is as expected, and both iterables have the same length (with strict=True)
+        it = concat(first, ' ', last)
+        for a, b in zip(it, out, strict=True):
+            self.assertEqual(a, b)
+
+        it = concat(first, last, sep=' ')
+        for a, b in zip(it, out, strict=True):
+            self.assertEqual(a, b)
+
+        ages = [32, 19, 30, 53]
+        out = ['jake snake - 32',  'carla louie - 19', 'francis ngannou - 30', 'john cash - 53']
+        it = concat(first, ' ', last, ' - ', ages)
+        for a, b in zip(it, out, strict=True):
+            self.assertEqual(a, b)
+
+        out = ['jake snake 32',  'carla louie 19', 'francis ngannou 30', 'john cash 53']
+        it = concat(first, last, ages, sep=' ')
+        for a, b in zip(it, out, strict=True):
+            self.assertEqual(a, b)
 
     def test_mb_size(self):
         pass
 
     def test_rename_duplicate_cols(self):
-        pass
+        cols = ['a', 'b', 'c']
+        out = rename_duplicate_cols(cols)
+        self.assertEqual(len(cols), len(out))
+
+        cols = ['a', 'b', 'c', 'a', 'b', 'b']
+        out = rename_duplicate_cols(cols)
+        unique_out: set[str] = set(out)
+        self.assertEqual(len(cols), len(unique_out))
+        self.assertEqual(out, ['a', 'b', 'c', 'a_2', 'b_2', 'b_3'])
 
     def test_convert_db_to_sql(self):
         pass

@@ -28,11 +28,18 @@ class Table:
         self.conn = conn
         self._cache = cache
         self.name = name
-        self.query = f'SELECT * FROM {self.name}'
+        self._query = f'SELECT * FROM {self.name}'
         self._column_items: dict[str, Column] = {}
 
         for column in self.columns:
             self._set_column(column)
+
+    @property
+    def query(self) -> str:
+        """
+        Return query that represents the table (SELECT * FROM table)
+        """
+        return self._query
 
     @property
     def columns(self) -> list[str]:

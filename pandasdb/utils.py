@@ -121,9 +121,9 @@ def infinite_generator(val: TypeAny) -> Generator[TypeAny, None, None]:
         yield val
 
 
-def concat(*args: str | Iterable, sep: str = '') -> Generator:
+def concat(*args: str | Iterable, sep: str = '') -> Generator[tuple[str, ...], None, None]:
     """
-    Return a generator with the elements concatenated
+    Return a generator with the elements concatenated (as a string)
 
     You can pass both strings and Iterables (list, tuple, set, dict, generator, etc..)
     if you pass an iterable than the length must be the same as the length of the column
@@ -138,7 +138,7 @@ def concat(*args: str | Iterable, sep: str = '') -> Generator:
     :return: Generator
     """
     converted_args = []
-    for arg in args:
+    for arg in args:  # make all args iterable, so we can do: `zip(*args)`
         if isinstance(arg, str) or not isinstance(arg, Iterable):
             arg = infinite_generator(arg)
         converted_args.append(arg)

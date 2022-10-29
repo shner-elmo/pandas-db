@@ -129,17 +129,6 @@ class Database:
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
 
-    def drop_table(self, *tables: str) -> None:
-        """
-        Drop SQL tables
-
-        :param tables: args, str
-        :return: None
-        """
-        for table in tables:
-            with self.conn as cursor:
-                cursor.execute(f'DROP TABLE {table}')
-
     def drop_view(self, *tables: str) -> None:
         """
         Drop SQL Views
