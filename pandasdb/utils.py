@@ -3,9 +3,10 @@ from __future__ import annotations
 import pandas as pd
 from pympler import asizeof
 
+import sqlite3
+import itertools
 import random
 import string
-import sqlite3
 from pathlib import Path
 from typing import Generator, Iterable, Any, TypeVar, Protocol
 
@@ -109,18 +110,6 @@ def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_ex
         cursor.execute(f"CREATE VIEW {view_name} AS {query}")
 
 
-def same_val_generator(val: TypeAny, size: int) -> Generator[TypeAny, None, None]:
-    """ Generator that yield a given value n amount of times """
-    for _ in range(size):
-        yield val
-
-
-def infinite_generator(val: TypeAny) -> Generator[TypeAny, None, None]:
-    """ Generator the yields a given value infinitely """
-    while True:
-        yield val
-
-
 def concat(*args: str | Iterable, sep: str = '') -> Generator[tuple[str, ...], None, None]:
     """
     Return a generator with the elements concatenated (as a string)
@@ -140,7 +129,7 @@ def concat(*args: str | Iterable, sep: str = '') -> Generator[tuple[str, ...], N
     converted_args = []
     for arg in args:  # make all args iterable, so we can do: `zip(*args)`
         if isinstance(arg, str) or not isinstance(arg, Iterable):
-            arg = infinite_generator(arg)
+            arg = itertools.repeat(arg)
         converted_args.append(arg)
 
     for tup in zip(*converted_args):

@@ -3,12 +3,13 @@ from __future__ import annotations
 from pandas import DataFrame, Series
 
 import sqlite3
+import itertools
 from typing import Generator, Callable, Any, Sequence, TypeVar, Iterable
 
 from .expression import Expression, OrderBy, Limit
 from .indexloc import IndexLoc
 from .cache import Cache
-from .utils import same_val_generator, create_view, get_random_name, sql_tuple, convert_type_to_sql
+from .utils import create_view, get_random_name, sql_tuple, convert_type_to_sql
 
 PrimitiveTypes = str | int | float | bool | None
 Numeric = int | float
@@ -490,7 +491,7 @@ class Column:
         :return: Generator
         """
         if isinstance(other, str) or not isinstance(other, Iterable):
-            other = same_val_generator(val=other, size=len(self))
+            other = itertools.repeat(other, len(self))
 
         for x, y in zip(self, other, strict=True):
             if x is None:
@@ -506,7 +507,7 @@ class Column:
         :return: None
         """
         if not isinstance(other, Iterable):
-            other = same_val_generator(val=other, size=len(self))
+            other = itertools.repeat(other, len(self))
 
         for x, y in zip(self, other, strict=True):
             if x is None:
@@ -522,7 +523,7 @@ class Column:
         :return: None
         """
         if not isinstance(other, Iterable):
-            other = same_val_generator(val=other, size=len(self))
+            other = itertools.repeat(other, len(self))
 
         for x, y in zip(self, other, strict=True):
             if x is None:
@@ -538,7 +539,7 @@ class Column:
         :return: None
         """
         if not isinstance(other, Iterable):
-            other = same_val_generator(val=other, size=len(self))
+            other = itertools.repeat(other, len(self))
 
         for x, y in zip(self, other, strict=True):
             if x is None:
@@ -554,7 +555,7 @@ class Column:
         :return: None
         """
         if not isinstance(other, Iterable):
-            other = same_val_generator(val=other, size=len(self))
+            other = itertools.repeat(other, len(self))
 
         for x, y in zip(self, other, strict=True):
             if x is None:

@@ -77,24 +77,6 @@ class TestUtils(unittest.TestCase):
         with conn as cur:  # cleanup after test
             cur.execute(f'DROP VIEW {name}')
 
-    def test_same_val_generator(self):
-        val = random.random()
-        size = 9
-
-        it = same_val_generator(val=val, size=size)
-        for x in it:
-            self.assertEqual(x, val)
-
-        it = same_val_generator(val=val, size=size)
-        self.assertEqual(len(tuple(it)), size)
-
-    def test_infinite_generator(self):
-        val = random.random()
-        it = infinite_generator(val=val)
-        
-        for x, _ in zip(it, range(100)):
-            self.assertEqual(x, val)
-
     def test_concat(self):
         first = ['jake', 'carla', 'francis', 'john']
         last = ['snake', 'louie', 'ngannou', 'cash']
