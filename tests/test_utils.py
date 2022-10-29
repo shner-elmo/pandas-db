@@ -85,6 +85,7 @@ class TestUtils(unittest.TestCase):
         # make sure each element is as expected, and both iterables have the same length (with strict=True)
         it = concat(first, ' ', last)
         for a, b in zip(it, out, strict=True):
+            self.assertIsInstance(a, str)
             self.assertEqual(a, b)
 
         it = concat(first, last, sep=' ')

@@ -110,7 +110,7 @@ def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_ex
         cursor.execute(f"CREATE VIEW {view_name} AS {query}")
 
 
-def concat(*args: str | Iterable, sep: str = '') -> Generator[tuple[str, ...], None, None]:
+def concat(*args: str | Iterable, sep: str = '') -> Generator[str, None, None]:
     """
     Return a generator with the elements concatenated (as a string)
 
