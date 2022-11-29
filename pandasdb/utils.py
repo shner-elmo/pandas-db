@@ -12,13 +12,35 @@ from typing import Generator, Iterable, Any, TypeVar
 
 from .exceptions import ViewAlreadyExists
 
-__all__ = ['convert_type_to_sql', 'sql_tuple', 'sqlite_conn_open', 'get_random_name', 'create_view',
-           'create_temp_view', 'concat', 'get_mb_size', 'rename_duplicate_cols', 'convert_db_to_sql',
-           'convert_csvs_to_db', 'convert_sql_to_db', 'load_sql_to_sqlite']
+__all__ = [
+    'sort_iterable_with_none_values',
+    'convert_type_to_sql',
+    'sql_tuple',
+    'sqlite_conn_open',
+    'get_random_name',
+    'create_view',
+    'create_temp_view',
+    'concat',
+    'get_mb_size',
+    'rename_duplicate_cols',
+    'convert_db_to_sql',
+    'convert_csvs_to_db',
+    'convert_sql_to_db',
+    'load_sql_to_sqlite'
+]
 
 PrimitiveTypes = str | int | float | bool | None
 T = TypeVar("T")
 TypeAny = TypeVar('TypeAny', bound=Any)
+
+
+def sort_iterable_with_none_values(it: Iterable) -> list:
+    """
+    Sort an Iterable that contains None values
+
+    The builtin sorted() function isn't able to sort an iterable that contains any null values
+    """
+    return sorted(it, key=lambda x: (x is not None, x))
 
 
 def convert_type_to_sql(x: str | int | float | bool) -> str:

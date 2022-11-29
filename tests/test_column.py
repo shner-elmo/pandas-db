@@ -1,4 +1,4 @@
-from pandas import Series
+from pandas import Series, DataFrame
 import numpy as np
 
 import unittest
@@ -8,6 +8,7 @@ from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.column import Column
 from pandasdb.expression import Expression
+from pandasdb.utils import sort_iterable_with_none_values
 
 
 DB_FILE = '../data/forestation.db'
@@ -25,12 +26,6 @@ class TestColumn(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.db.exit()
-
-    def test_create_view(self):
-        pass
-
-    def test_create_from_query(self):
-        pass
 
     def test_type(self):
         for name, col in self.table.items():
@@ -79,6 +74,12 @@ class TestColumn(unittest.TestCase):
             out = col.na_count()
             self.assertIsInstance(out, int)
             self.assertEqual(col.na_count() + col.count(), col.len)
+
+            c = 0
+            for x in col:
+                if x is None:
+                    c += 1
+            self.assertEqual(c, out)
 
     def test_min(self):
         for name, col in self.table.items():
@@ -219,6 +220,17 @@ class TestColumn(unittest.TestCase):
         data = self.column.data(5)
         self.assertEqual(len(data), 5)
 
+    def test_sample(self):
+        out = self.column.sample()
+        self.assertIsInstance(out, list)
+        self.assertNotIsInstance(out[0], (list, tuple))
+
+        a = self.column.sample(10)
+        b = self.column.sample(10)
+        self.assertEqual(len(a), len(b))
+        self.assertEqual(len(a), 10)
+        self.assertNotEqual(a, b)
+
     def test_apply(self):
         for name, col in self.table.items():
 
@@ -328,6 +340,45 @@ class TestColumn(unittest.TestCase):
             self.column.iloc.__getitem__, index
         )
 
+    def test_not_null(self):
+        for _, table in self.db.items():
+            for _, col in table.items():
+                null_count = col.na_count()
+                if null_count == 0:
+                    self.assertEqual(len(col), len(col.not_null()))
+                    self.assertFalse(any(x is None for x in col))
+                else:
+                    self.assertTrue(any(x is None for x in col))
+                    self.assertFalse(any(x is None for x in col.not_null()))
+                    self.assertEqual(len(col), len(col.not_null()) + null_count)
+
+    def test_sort_values(self):
+        for _, table in self.db.items():
+            for _, col in table.items():
+                py_sorted_col = sort_iterable_with_none_values(col)
+                sql_sorted_col = list(col.sort_values())
+                self.assertEqual(len(py_sorted_col), len(sql_sorted_col))
+                self.assertEqual(py_sorted_col, sql_sorted_col)
+
+    def test_limit(self):
+        for i in (0, 1, 2, 5, 10, 50, 100):
+            out = self.column.limit(i)
+            self.assertEqual(len(out), i)
+            sliced_column: list = self.column.iloc[:i]
+            self.assertEqual(len(sliced_column), len(out))
+            self.assertEqual(sliced_column, list(out))
+
+    def test_filter(self):
+        for _, table in self.db.items():
+            for _, col in table.items():
+                if col.data_is_numeric():
+                    out = self.column.filter()
+                else:
+                    out = self.column.filter()
+
+    def test_create_and_get_temp_view(self):
+        raise NotImplementedError
+
     def test_getitem(self):
         """
         There are two ways of getting a slice from a Column object;
@@ -355,6 +406,11 @@ class TestColumn(unittest.TestCase):
 
     def test_hash(self):
         self.assertIsInstance(hash(self.column), int)
+
+    def test_repr_df(self):
+        df = self.table._repr_df()
+        self.assertIsInstance(df, DataFrame)
+        self.assertEqual(len(df), 20)
 
     def test_repr(self):
         self.assertIsInstance(repr(self.column), str)

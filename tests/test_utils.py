@@ -1,5 +1,6 @@
 import unittest
 import sqlite3
+import random
 from typing import Any
 
 from pandasdb.utils import *
@@ -27,8 +28,6 @@ class TestUtils(unittest.TestCase):
 
     def test_sqlite_conn_open(self):
         conn = sqlite3.connect(DB_FILE)
-        # with conn as cur:
-        #     cur.execute('SELECT ')
         conn.cursor()  # if connection is closed it will raise an error when asked for a cursor
         self.assertIs(sqlite_conn_open(conn), True)
         conn.close()
@@ -49,6 +48,9 @@ class TestUtils(unittest.TestCase):
             get_random_name(), get_random_name()
         }
         self.assertEqual(len(random_names), 6)
+
+    def test_create_view(self):
+        raise NotImplementedError
 
     def test_create_temp_view(self):
         def get_temp_views() -> list:
@@ -110,7 +112,26 @@ class TestUtils(unittest.TestCase):
         for a, b in zip(it, out, strict=True):
             self.assertEqual(a, b)
 
-    def test_mb_size(self):
+    def test_sort_iterable_with_none_values(self):
+        # simulate SQL columns that have a certain data type (str, int, bool) and contain null values
+        lists = {
+            'int': [None, 4, 2, -3, 90, None, -40, None],
+            'str': [None, 'a', 'z', 'b', None, 'y', None],
+            'bool': [None, True, True, None, False, None]
+        }
+        out = sort_iterable_with_none_values(lists['int'])
+        sql_sorted = [None, None, None, -40, -3, 2, 4, 90]  # sql will put None values first
+        self.assertEqual(out, sql_sorted)
+
+        out = sort_iterable_with_none_values(lists['str'])
+        sql_sorted = [None, None, None, 'a', 'b', 'y', 'z']
+        self.assertEqual(out, sql_sorted)
+
+        out = sort_iterable_with_none_values(lists['bool'])
+        sql_sorted = [None, None, None, False, True, True]
+        self.assertEqual(out, sql_sorted)
+
+    def test_get_mb_size(self):
         pass
 
     def test_rename_duplicate_cols(self):

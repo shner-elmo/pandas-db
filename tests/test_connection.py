@@ -82,6 +82,12 @@ class TestConnection(unittest.TestCase):
         shared_items = tables & views
         self.assertEqual(len(shared_items), 0)
 
+    def test_temp_tables(self):
+        raise NotImplementedError
+
+    def test_temp_views(self):
+        raise NotImplementedError
+
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])
         self.assertIsInstance(out, list)

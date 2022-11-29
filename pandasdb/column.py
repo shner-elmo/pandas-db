@@ -164,7 +164,7 @@ class Column:
         """
         return self._cache.execute(f'SELECT COUNT({self.name}) FROM {self.table}')[0][0]
 
-    def na_count(self) -> int:
+    def na_count(self) -> int:  # TODO rename to null_count
         """
         Get the amount of None values in column
         """
@@ -381,18 +381,18 @@ class Column:
 
     def not_null(self) -> ColumnView:
         """
-        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
+        Return a new column without any null values
 
-        :return: Expression instance
+        :return: ColumnView
         """
         return self.filter(expression=Expression(query=f'{self.name} IS NOT NULL', table=self.table))
 
     def sort_values(self, ascending: bool = True) -> ColumnView:
         """
-        Return a OrderBy object (which can be passed to column.filter())
+        Return a new column with the data sorted
 
         :param ascending: bool, default True
-        :return: OrderBy instance
+        :return: ColumnView
         """
         view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
         query = f"""
@@ -405,12 +405,12 @@ class Column:
 
     def limit(self, limit: int) -> ColumnView:
         """
-        Return a Limit object that limits the amount of rows in a column
+        Return a new column limits the amount of rows in a column
 
-        (creates a view with: "SELECT ... LIMIT {limit})
+        (creates a view with: f"SELECT ... LIMIT {limit}")
 
         :param limit: int
-        :return: Limit instance
+        :return: ColumnView
         """
         view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
         query = f"""
@@ -446,28 +446,28 @@ class Column:
         "SELECT {col} FROM {table} WHERE {expression}"
         and then a new Column instance is returned with the name being the view-name
 
+        --------------------------------------------------------------------------------------------------------
         the view name will start with '_col_` since the data within the table-view represents a column,
         and we add 10 random letters to the name, so we can create other filters for the same column without
         having to delete previous ones, or overwrite them.
 
-        note that the view name is store in a list (in self._cache.views) so when the user closes the connection
-        with `db.exit()`, all the views in the list will be dropped/ deleted.
+        note that the created view is temporary, meaning that when the user closes the connection
+        with `db.exit()`, all the views in the list will be dropped/ deleted automatically.
 
         A final note on 'ROW_NUMBER' in the SQL query;
         for the `Column.iloc` to work we need to have a rowid column, sqlite3 has it builtin on each table,
         meaning its auto-generated (but the user can overwrite it),
-        the issue is that since a VIEW isn't a table it doesn't have the rowid column.
+        the issue is that since a VIEW is a virtual-table it doesn't have the rowid column.
         so we are left with one option; select the `rowid` column from the table when creating the view,
         but the issue with that is that the position of the rows no longer corresponds since the amount of rows
         in each table is different,
-        so what I did instead is, create a column using the `ROW_NUMBER` function to get the index/id of each row,
-        and since I need to pass a column, I passed `rowid`.
-        So it will order the table by rowid, and then create the column using the `ROW_NUMBER` function,
-        and finally, alias the new column as 'rowid' so `self.iloc` can reference it and use it to get rows
+        so what I did instead is, create a column using the `ROW_NUMBER()` function to get the index/id of each row,
+        so it will order the table by rowid, and then create the column using the `ROW_NUMBER` function,
+        and finally, alias the new column as '_rowid_' so `self.iloc` can reference it and use it to get rows
         by index position.
 
         :param expression: Expression
-        :return: Column instance
+        :return: ColumnView instance
         """
         view_name = f'_col_filtered_{self.table}_{self.name}_{get_random_name(size=10)}_'
         query = f"""
@@ -478,6 +478,13 @@ class Column:
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
     def _create_and_get_temp_view(self, view_name: str, query: str) -> ColumnView:
+        """
+        Create a temporary-view (gets auto deleted at the end of the session) and return a new ColumnView instance
+
+        :param view_name: str
+        :param query: str
+        :return: ColumnView instance
+        """
         create_temp_view(
             conn=self.conn,
             view_name=view_name,
@@ -514,9 +521,7 @@ class Column:
         """
         if isinstance(item, Expression):
             return self.filter(item)
-        elif isinstance(item, tuple):
-            return self.filter(*item)
-        elif isinstance(item, (int, slice, list)):
+        if isinstance(item, (int, slice, list)):
             return self.iloc[item]
 
         raise TypeError(f'Argument must be of type Expression, int, slice, or list. not: {type(item)}')

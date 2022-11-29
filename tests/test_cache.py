@@ -20,16 +20,6 @@ class TestCacheDict(unittest.TestCase):
         self.assertTrue(isinstance(self.cache, CacheDict))
         self.assertTrue(isinstance(self.cache, dict))
 
-    def test_reset(self):
-        self.assertEqual(len(self.cache), 0)
-        self.cache['SELECT MIN(a) FROM table'] = [(0.02, )]
-        self.cache['SELECT MAX(a) FROM table'] = [(436.643, )]
-        self.cache['SELECT AVG(a) FROM table'] = [(32.42, )]
-        self.assertEqual(len(self.cache), 3)
-
-        self.cache.clear()
-        self.assertEqual(len(self.cache), 0)
-
     def test_setitem(self):
         types = [dict(), set(), tuple(), list(),  3, 3.32, None, True]
         for t in types:
@@ -70,7 +60,7 @@ class TestCache(unittest.TestCase):
     def setUp(self) -> None:
         self.conn = sqlite3.connect(DB_FILE)
 
-        db = Database(DB_FILE, cache=True, block_till_ready=True)
+        db = Database(DB_FILE, cache=True, populate_cache=True, block_till_ready=True)
         table = db.tables[0]
         column = db[table].columns[0]
         self.table = db[table]
