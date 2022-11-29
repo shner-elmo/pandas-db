@@ -5,7 +5,7 @@ class FileTypeError(Exception):
 
 
 class ViewAlreadyExists(Exception):
-    """ Raised when the user tries to create an SQL View that already exists"""
+    """ Raised when the user tries to create an SQL View that already exists """
     pass
 
 
