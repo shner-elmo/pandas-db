@@ -8,25 +8,17 @@ import itertools
 import random
 import string
 from pathlib import Path
-from typing import Generator, Iterable, Any, TypeVar, Protocol
+from typing import Generator, Iterable, Any, TypeVar
+
+from .exceptions import ViewAlreadyExists
+
+__all__ = ['convert_type_to_sql', 'sql_tuple', 'sqlite_conn_open', 'get_random_name', 'create_view',
+           'create_temp_view', 'concat', 'get_mb_size', 'rename_duplicate_cols', 'convert_db_to_sql',
+           'convert_csvs_to_db', 'convert_sql_to_db', 'load_sql_to_sqlite']
 
 PrimitiveTypes = str | int | float | bool | None
 T = TypeVar("T")
 TypeAny = TypeVar('TypeAny', bound=Any)
-
-
-class SizedIterable(Protocol):
-    def __len__(self) -> int:
-        ...
-
-    def __iter__(self) -> SizedIterable:
-        ...
-
-    def __next__(self) -> Any:
-        ...
-
-# Unfortunately Pycharm doesn't support Protocol classes, so use Collection instead (for indexloc.sql_tuple)
-# https://stackoverflow.com/a/49434182/18042558
 
 
 def convert_type_to_sql(x: str | int | float | bool) -> str:
@@ -84,7 +76,6 @@ def get_random_name(size: int = 10) -> str:
     return ''.join(random.choices(string.ascii_lowercase, k=size))
 
 
-# TODO move to connection.Database
 def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_exists: bool = False) -> None:
     """
     Create view from given sql query
@@ -104,10 +95,35 @@ def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_ex
             with conn as cursor:
                 cursor.execute(f'DROP VIEW {view_name}')
         else:
-            raise ValueError(f"view '{view_name}' already exists")
+            raise ViewAlreadyExists(f"view {view_name} already exists")
 
     with conn as cursor:
         cursor.execute(f"CREATE VIEW {view_name} AS {query}")
+
+
+def create_temp_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_exists: bool = False) -> None:
+    """
+    Create temporary view from given sql query
+
+    :param conn: sqlite3 connection
+    :param view_name: str
+    :param query: str, select query
+    :param drop_if_exists: bool, default False
+    :raises: ValueError if view_name already exists
+    :return: None
+    """
+    with conn as cursor:
+        views: Iterable[str] = (x[0] for x in cursor.execute("SELECT name FROM sqlite_temp_master WHERE type='view'"))
+
+    if view_name in views:
+        if drop_if_exists:
+            with conn as cursor:
+                cursor.execute(f'DROP VIEW {view_name}')
+        else:
+            raise ViewAlreadyExists(f"view {view_name} already exists")
+
+    with conn as cursor:
+        cursor.execute(f"CREATE TEMP VIEW {view_name} AS {query}")
 
 
 def concat(*args: str | Iterable, sep: str = '') -> Generator[str, None, None]:

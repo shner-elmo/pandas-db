@@ -112,7 +112,6 @@ class Database:
 
         :return: list with table names
         """
-        # avoid cache for tables added after
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")]
 
@@ -125,20 +124,24 @@ class Database:
 
         :return: list with table names
         """
-        # avoid cache for tables added after
         with self.conn as cursor:
             return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
 
-    def drop_view(self, *tables: str) -> None:
+    @property
+    def temp_tables(self) -> list[str]:
         """
-        Drop SQL Views
+        Get a list of all temporary tables (a temporary table is a table that lasts only as long as the session does)
+        """
+        with self.conn as cursor:
+            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_temp_master WHERE type='table'")]
 
-        :param tables: args, str
-        :return: None
+    @property
+    def temp_views(self) -> list[str]:
         """
-        for table in tables:
-            with self.conn as cursor:
-                cursor.execute(f'DROP VIEW {table}')
+        Get a list of all temporary views (a temporary view is a table that lasts only as long as the session does)
+        """
+        with self.conn as cursor:
+            return [x[0] for x in cursor.execute("SELECT name FROM sqlite_temp_master WHERE type='view'")]
 
     def get_columns(self, table_name: str) -> list[str]:
         """
@@ -216,7 +219,6 @@ class Database:
         :return: None
         """
         if sqlite_conn_open(self.conn):
-            self.drop_view(*self.cache.views)
             self.conn.close()
         else:
             warnings.warn('Connection already closed!', ConnectionClosedWarning)

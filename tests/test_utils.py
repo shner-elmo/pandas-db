@@ -1,6 +1,9 @@
 import unittest
+import sqlite3
+from typing import Any
 
 from pandasdb.utils import *
+from pandasdb.exceptions import ViewAlreadyExists
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -47,35 +50,39 @@ class TestUtils(unittest.TestCase):
         }
         self.assertEqual(len(random_names), 6)
 
-    def test_create_view(self):
-        def get_views() -> list:
+    def test_create_temp_view(self):
+        def get_temp_views() -> list:
             with conn as cursor:
-                return [x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'")]
+                return [x[0] for x in cursor.execute("SELECT name FROM sqlite_temp_master WHERE type='view'")]
 
         conn = sqlite3.connect(DB_FILE)
         name = f'test_view_{get_random_name()}'
         query = 'SELECT * FROM forest_area LIMIT 50'
 
-        self.assertNotIn(member=name, container=get_views())
-        create_view(conn=conn, view_name=name, query=query, drop_if_exists=True)
-        self.assertIn(member=name, container=get_views())
+        self.assertNotIn(member=name, container=get_temp_views())
+        create_temp_view(conn=conn, view_name=name, query=query, drop_if_exists=False)
+        self.assertIn(member=name, container=get_temp_views())
+        conn.close()
 
+        # after closing the connection the TEMP-VIEW should auto-delete
+        conn = sqlite3.connect(DB_FILE)
+        self.assertNotIn(member=name, container=get_temp_views())
+
+        create_temp_view(conn=conn, view_name=name, query=query, drop_if_exists=False)
         with conn as cur:
             view_data: list[tuple[Any]] = cur.execute(f'SELECT * FROM {name}').fetchall()
             table_data: list[tuple[Any]] = cur.execute(query).fetchall()
         self.assertEqual(view_data, table_data)
 
         self.assertRaisesRegex(
-            ValueError,
-            f"view '{name}' already exists",
-            create_view, conn=conn, view_name=name, query=query, drop_if_exists=False
+            ViewAlreadyExists,
+            f"view {name} already exists",
+            create_temp_view, conn=conn, view_name=name, query=query, drop_if_exists=False
         )
 
-        create_view(conn=conn, view_name=name, query=query, drop_if_exists=True)
-        self.assertIn(member=name, container=get_views())
-
-        with conn as cur:  # cleanup after test
-            cur.execute(f'DROP VIEW {name}')
+        self.assertIn(member=name, container=get_temp_views())
+        create_temp_view(conn=conn, view_name=name, query=query, drop_if_exists=True)
+        self.assertIn(member=name, container=get_temp_views())
 
     def test_concat(self):
         first = ['jake', 'carla', 'francis', 'john']

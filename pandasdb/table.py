@@ -3,14 +3,106 @@ from __future__ import annotations
 from pandas import DataFrame
 
 import sqlite3
-from typing import Generator, Callable, Any
+from typing import Generator, Callable, Any, overload
 
 from .exceptions import InvalidColumnError
 from .column import Column
-from .indexloc import IndexLoc
 from .cache import Cache
 from .expression import Expression
-from .utils import create_view, get_random_name
+from .utils import create_temp_view, get_random_name, sql_tuple
+
+PrimitiveTypes = str | int | float | bool | None
+TableRow = tuple[PrimitiveTypes, ...]
+
+
+class IndexLoc:
+    def __init__(self, table: Table) -> None:
+        self.table = table
+        self.len = len(table)  # to avoid recomputing
+
+    def index_abs(self, idx: int) -> int:
+        """
+        Return the absolute of an index
+
+        if the given index is negative it will convert it to positive, for ex:
+        if the given index is -1 and the length of the table is 371 the method will return 371
+
+        :param idx: int
+        :return: int
+        """
+        if idx < 0:
+            return self.len + idx
+        return idx
+
+    def validate_index(self, idx: int) -> None:
+        """
+        Assert given index is above zero, and below or equal to length,
+        else: raise IndexError
+
+        :param idx: int, must be positive
+        :raise IndexError: if not 0 <= index < length
+        :return: None
+        """
+        if not 0 <= idx < self.len:
+            raise IndexError(f'Given index out of range ({idx})')
+
+    @overload
+    def __getitem__(self, index: int) -> TableRow:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice | list) -> list[TableRow]:
+        ...
+
+    def __getitem__(self, index: int | slice | list) -> TableRow | list[TableRow]:
+        """
+        Get row/value at given index
+
+        if an int is passed; then values at the given index will be returned
+        if a slice or a list is passed; then it will return a list of elements/cells from the table
+
+        Note that the index is always increased by one before being passed to the SQL query,
+        as the rowid columns starts the count at 1 and not 0.
+
+        :param index: int | slice | list
+        :return: tuple | list | BaseTypes
+        """
+        def select_cols_str() -> str:
+            return ', '.join(self.table.columns)
+
+        if isinstance(index, int):
+            index = self.index_abs(index)
+            self.validate_index(index)
+            index += 1
+
+            with self.table.conn as cursor:
+                query = f'SELECT {select_cols_str()} FROM {self.table.name} WHERE _rowid_ == {index}'
+                return cursor.execute(query).fetchall()[0]
+
+        if isinstance(index, slice):
+            indices = index.indices(self.len)
+            indexes = [idx + 1 for idx in range(*indices)]
+
+            with self.table.conn as cursor:
+                query = f'SELECT {select_cols_str()} FROM {self.table.name} WHERE _rowid_ IN {sql_tuple(indexes)}'
+                return cursor.execute(query).fetchall()
+
+        if isinstance(index, list):
+            indexes = [self.index_abs(idx) for idx in index]
+            for idx in indexes:
+                self.validate_index(idx)
+            indexes = [idx + 1 for idx in indexes]
+            unique_indexes = set(indexes)
+
+            with self.table.conn as cursor:
+                rows = cursor.execute(
+                    f'SELECT _rowid_, {select_cols_str()} FROM {self.table.name} '
+                    f'WHERE _rowid_ IN {sql_tuple(unique_indexes)}')
+
+            idx_row_mapping: dict[int, TableRow] = {tup[0]: tup[1:] for tup in rows}  # first item in tuple is _rowid_
+            return [idx_row_mapping[idx] for idx in indexes]
+
+        raise TypeError(f'Index must be of type: int, list, or slice. not: {type(index)}')
 
 
 class Table:
@@ -77,7 +169,7 @@ class Table:
         """
         return DataFrame(data=iter(self), columns=self.columns)
 
-    def data(self, limit: int = None) -> list:
+    def data(self, limit: int = None) -> list[TableRow]:
         """
         Get table data in a nested list, ex: [('AMD', 78.54, True), ('AAPL', 125.34, True)...]
 
@@ -89,7 +181,7 @@ class Table:
                 return cursor.execute(self.query + f' LIMIT {limit}').fetchall()
             return cursor.execute(self.query).fetchall()
 
-    def sample(self, n: int = 10) -> list[tuple]:
+    def sample(self, n: int = 10) -> list[TableRow]:
         """
         Get a list of random rows from the table
 
@@ -144,7 +236,7 @@ class Table:
 
         :return: tuple or list of tuples
         """
-        return IndexLoc(obj=self)
+        return IndexLoc(self)
 
     def filter(self, expression: Expression) -> TableView:
         """
@@ -160,19 +252,18 @@ class Table:
         FROM {self.name} 
         WHERE {expression.query}
         """
-        create_view(
+        create_temp_view(
             conn=self.conn,
             view_name=view_name,
             query=query
         )
-        self._cache.views.append(view_name)
         return TableView(conn=self.conn, cache=self._cache, name=view_name)
 
     # def sort_values(self, columns: list[str]) -> TableView:
-    #     create_view(conn=self.conn, )
+    #     create_temp_view(conn=self.conn, )
     #     return TableView(conn=self.conn, cache=self._cache, name=self.name)
 
-    def __iter__(self) -> Generator[tuple, None, None]:
+    def __iter__(self) -> Generator[TableRow, None, None]:
         """
         Yield rows from cursor
         """

@@ -4,16 +4,102 @@ from pandas import DataFrame, Series
 
 import sqlite3
 import itertools
-from typing import Generator, Callable, Any, Sequence, TypeVar, Iterable
+from typing import Generator, Callable, Any, Sequence, TypeVar, Iterable, overload
 
-from .expression import Expression, OrderBy, Limit
-from .indexloc import IndexLoc
+from .expression import Expression
 from .cache import Cache
-from .utils import create_view, get_random_name, sql_tuple, convert_type_to_sql
+from .utils import create_temp_view, get_random_name, sql_tuple, convert_type_to_sql
 
-PrimitiveTypes = str | int | float | bool | None
+ColumnValue = str | int | float | bool | None
 Numeric = int | float
 T = TypeVar('T')
+
+
+class IndexLoc:
+    def __init__(self, column: Column) -> None:
+        self.col = column
+        self.len = len(column)  # to avoid recomputing
+
+    def index_abs(self, idx: int) -> int:
+        """
+        Return the absolute of an index
+
+        if the given index is negative it will convert it to positive, for ex:
+        if the given index is -1 and the length of the table is 371 the method will return 371
+
+        :param idx: int
+        :return: int
+        """
+        if idx < 0:
+            return self.len + idx
+        return idx
+
+    def validate_index(self, idx: int) -> None:
+        """
+        Assert given index is above zero, and below or equal to length,
+        else: raise IndexError
+
+        :param idx: int, must be positive
+        :raise IndexError: if not 0 <= index < length
+        :return: None
+        """
+        if not 0 <= idx < self.len:
+            raise IndexError(f'Given index out of range ({idx})')
+
+    @overload
+    def __getitem__(self, index: int) -> ColumnValue:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice | list) -> list[ColumnValue]:
+        ...
+
+    def __getitem__(self, index: int | slice | list) -> ColumnValue | list[ColumnValue]:
+        """
+        Get row/value at given index
+
+        if an int is passed; then values at the given index will be returned
+        if a slice or a list is passed; then it will return a list of elements/cells from the column
+
+        Note that the index is always increased by one before being passed to the SQL query,
+        as the rowid columns starts the count at 1 and not 0.
+
+        :param index: int | slice | list
+        :return: tuple | list | BaseTypes
+        """
+        if isinstance(index, int):
+            index = self.index_abs(index)
+            self.validate_index(index)
+            index += 1
+
+            with self.col.conn as cursor:
+                query = f'SELECT {self.col.name} FROM {self.col.table} WHERE _rowid_ == {index}'
+                return cursor.execute(query).fetchall()[0][0]
+
+        if isinstance(index, slice):
+            indices = index.indices(self.len)
+            indexes = [idx + 1 for idx in range(*indices)]
+
+            with self.col.conn as cursor:
+                query = f'SELECT {self.col.name} FROM {self.col.table} WHERE _rowid_ IN {sql_tuple(indexes)}'
+                return [tup[0] for tup in cursor.execute(query)]
+
+        if isinstance(index, list):
+            indexes = [self.index_abs(idx) for idx in index]
+            for idx in indexes:
+                self.validate_index(idx)
+            indexes = [idx + 1 for idx in indexes]
+            unique_indexes = set(indexes)
+
+            with self.col.conn as cursor:
+                rows = cursor.execute(
+                    f'SELECT _rowid_, {self.col.name} FROM {self.col.table} '
+                    f'WHERE _rowid_ IN {sql_tuple(unique_indexes)}')
+
+            idx_row_mapping: dict[int, ColumnValue] = dict(rows)
+            return [idx_row_mapping[idx] for idx in indexes]
+
+        raise TypeError(f'Index must be of type: int, list, or slice. not: {type(index)}')
 
 
 class Column:
@@ -130,17 +216,20 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get median for Column of type {self.type}')
 
-        col = self.not_null().sort_values()  # filter None values and sort column
-        n = len(col)
-        mid = n // 2 - 1  # remove one since index starts at zero
+        if self.na_count() == 0:
+            col = self.sort_values()
+        else:
+            col = self.not_null().sort_values()
 
+        n = len(col)
+        mid = (n - 1) // 2
         if n % 2 == 0:
             lst: list[Numeric] = col.iloc[[mid, mid + 1]]
             return sum(lst) / 2
         else:
             return col.iloc[mid]
 
-    def mode(self) -> dict[PrimitiveTypes, int]:
+    def mode(self) -> dict[ColumnValue, int]:
         """
         Get the mode/s of the column as a dictionary; {'value': count}
 
@@ -188,15 +277,15 @@ class Column:
                 'unique': len(self.unique())
             }
 
-    def unique(self) -> list[PrimitiveTypes]:
+    def unique(self) -> list[ColumnValue]:
         """
         Get list with unique values
 
         :return list
         """
-        return list(tup[0] for tup in self._cache.execute(f'SELECT DISTINCT {self.name} FROM {self.table}'))
+        return [tup[0] for tup in self._cache.execute(f'SELECT DISTINCT {self.name} FROM {self.table}')]
 
-    def value_counts(self) -> dict[PrimitiveTypes, int]:
+    def value_counts(self) -> dict[ColumnValue, int]:
         """
         Get a dictionary with the count of each value in the Column
 
@@ -213,34 +302,6 @@ class Column:
         """
         return dict(self._cache.execute(query))
 
-    def not_null(self) -> Column:
-        """
-        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
-
-        :return: Expression instance
-        """
-        return self.filter(expression=Expression(query=f'{self.name} IS NOT NULL', table=self.table))
-
-    def sort_values(self, ascending: bool = True) -> Column:
-        """
-        Return a OrderBy object (which can be passed to column.filter())
-
-        :param ascending: bool, default True
-        :return: OrderBy instance
-        """
-        return self.filter(order_by=OrderBy(column=self.name, ascending=ascending))
-
-    def limit(self, limit: int) -> Column:
-        """
-        Return a Limit object that limits the amount of rows in a column
-
-        (creates a view with: "SELECT ... LIMIT {limit})
-
-        :param limit: int
-        :return: Limit instance
-        """
-        return self.filter(limit=Limit(limit=limit))
-
     def to_series(self) -> Series:
         """
         Return column as a Pandas Series
@@ -249,7 +310,7 @@ class Column:
         """
         return Series(data=iter(self), name=self.name)
 
-    def data(self, limit: int = None) -> list[PrimitiveTypes]:
+    def data(self, limit: int = None) -> list[ColumnValue]:
         """
         Get column-data
 
@@ -263,7 +324,7 @@ class Column:
                 return [tup[0] for tup in cursor.execute(self.query + f' LIMIT {limit}')]
             return [tup[0] for tup in cursor.execute(self.query)]
 
-    def sample(self, n: int = 10) -> list[PrimitiveTypes]:
+    def sample(self, n: int = 10) -> list[ColumnValue]:
         """
         Get a list of random values from the column
 
@@ -273,7 +334,7 @@ class Column:
         with self.conn as cursor:
             return [tup[0] for tup in cursor.execute(f'{self.query} ORDER BY RANDOM() LIMIT {n}')]
 
-    def apply(self, func: Callable[[PrimitiveTypes, ...], T], *, ignore_na: bool = True,
+    def apply(self, func: Callable[[ColumnValue, ...], T], *, ignore_na: bool = True,
               args: tuple = (), **kwargs: Any) -> Generator[T, None, None]:
         """
         Apply function on each cell in the column
@@ -316,9 +377,50 @@ class Column:
 
         :return: list, str, int, or float
         """
-        return IndexLoc(obj=self)
+        return IndexLoc(self)
 
-    def filter(self, expression: Expression = None, order_by: OrderBy = None, limit: Limit = None) -> Column:
+    def not_null(self) -> ColumnView:
+        """
+        Return an Expression object that filters NULL values the column ('SELECT col FROM table WHERE col IS NOT NULL')
+
+        :return: Expression instance
+        """
+        return self.filter(expression=Expression(query=f'{self.name} IS NOT NULL', table=self.table))
+
+    def sort_values(self, ascending: bool = True) -> ColumnView:
+        """
+        Return a OrderBy object (which can be passed to column.filter())
+
+        :param ascending: bool, default True
+        :return: OrderBy instance
+        """
+        view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
+        query = f"""
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY {self.name} {'ASC' if ascending else 'DESC'}) AS _rowid_, 
+            {self.name}
+        FROM {self.table} 
+        """
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
+
+    def limit(self, limit: int) -> ColumnView:
+        """
+        Return a Limit object that limits the amount of rows in a column
+
+        (creates a view with: "SELECT ... LIMIT {limit})
+
+        :param limit: int
+        :return: Limit instance
+        """
+        view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
+        query = f"""
+        SELECT _rowid_ AS _rowid_, {self.name}
+        FROM {self.table}
+        LIMIT {limit}
+        """
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
+
+    def filter(self, expression: Expression) -> ColumnView:
         """
         Return a new Column object with the filtered data
 
@@ -364,43 +466,24 @@ class Column:
         and finally, alias the new column as 'rowid' so `self.iloc` can reference it and use it to get rows
         by index position.
 
-        # TODO add docu for orderby and limit parameters
         :param expression: Expression
-        :param order_by: OrderBy
-        :param limit: Limit
         :return: Column instance
         """
-        view_name = f'_col_{self.table}_{self.name}_{get_random_name(size=10)}_'
+        view_name = f'_col_filtered_{self.table}_{self.name}_{get_random_name(size=10)}_'
+        query = f"""
+        SELECT ROW_NUMBER() OVER (ORDER BY _rowid_) AS _rowid_, {self.name}
+        FROM {self.table} 
+        WHERE {expression.query}
+        """
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
 
-        if order_by:
-            # shortcut for when order_by is not None, when using an order by statement,
-            # the _rowid_ needs to be reordered for the indexes to match the rows
-            query = f"""
-            SELECT 
-                ROW_NUMBER() OVER (ORDER BY {order_by.cols}) AS _rowid_, {self.name} 
-            FROM (SELECT _rowid_, {self.name} FROM {self.table}
-                {f"WHERE {expression.query}" if expression else ""}
-                {f"LIMIT {limit.limit}" if limit else ""})
-            """
-        else:
-            query = f"""
-            SELECT 
-                ROW_NUMBER() OVER (ORDER BY _rowid_) AS _rowid_,
-                {self.name}
-            FROM {self.table} 
-            """
-            if expression:
-                query += f' WHERE {expression.query}'
-            if limit:
-                query += f' LIMIT {limit.limit}'
-
-        create_view(
+    def _create_and_get_temp_view(self, view_name: str, query: str) -> ColumnView:
+        create_temp_view(
             conn=self.conn,
             view_name=view_name,
-            query=query
+            query=query,
+            drop_if_exists=False
         )
-
-        self._cache.views.append(view_name)  # save name to delete the SQL VIEW just before closing the connection
         return ColumnView(
             created_query=query,
             conn=self.conn,
@@ -420,14 +503,11 @@ class Column:
         There are three ways to get a value or list of values at a given index:
         1. pass an integer: db.table.column[28]
         2. passing a slice: db.table.column[8:24:2]
-        3. and using a list: db.table.column[[3, 2, 8, -1, 15]]
+        3. and using a list of indexes: db.table.column[[3, 2, 8, -1, 15]]
 
         And for filtering a column you can simply pass a column with a logical expression:
         col1 = db.table.col1
         col1[col1 > 10]
-
-        You can optionally pass a OrderBy object, and/or a Limit object:
-        # TODO complete
 
         :param item: int | slice | list | Expression | tuple
         :return: IndexLoc | Column
@@ -441,7 +521,7 @@ class Column:
 
         raise TypeError(f'Argument must be of type Expression, int, slice, or list. not: {type(item)}')
 
-    def __iter__(self) -> Generator[PrimitiveTypes, None, None]:
+    def __iter__(self) -> Generator[ColumnValue, None, None]:
         """ Yield values from column """
         with self.conn as cursor:
             for i in cursor.execute(self.query):
@@ -563,14 +643,13 @@ class Column:
             else:
                 yield x // y
 
-    # TODO: complete expressions docstrings
     def __gt__(self, other: Numeric) -> Expression:
         """
 
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} > {other} ', table=self.table)
+        return Expression(query=f'{self.name} > {other}', table=self.table)
 
     def __ge__(self, other: Numeric) -> Expression:
         """
@@ -578,7 +657,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} >= {other} ', table=self.table)
+        return Expression(query=f'{self.name} >= {other}', table=self.table)
 
     def __lt__(self, other: Numeric) -> Expression:
         """
@@ -586,7 +665,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} < {other} ', table=self.table)
+        return Expression(query=f'{self.name} < {other}', table=self.table)
 
     def __le__(self, other: Numeric) -> Expression:
         """
@@ -594,27 +673,27 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} <= {other} ', table=self.table)
+        return Expression(query=f'{self.name} <= {other}', table=self.table)
 
-    def __eq__(self, other: PrimitiveTypes) -> Expression:
+    def __eq__(self, other: ColumnValue) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
         if other is None:
-            return Expression(query=f'{self.name} IS NULL ', table=self.table)
-        return Expression(query=f'{self.name} = {convert_type_to_sql(other)} ', table=self.table)
+            return Expression(query=f'{self.name} IS NULL', table=self.table)
+        return Expression(query=f'{self.name} = {convert_type_to_sql(other)}', table=self.table)
 
-    def __ne__(self, other: PrimitiveTypes) -> Expression:
+    def __ne__(self, other: ColumnValue) -> Expression:
         """
 
         :param other: str or float
         :return: Expression
         """
         if other is None:
-            return Expression(query=f'{self.name} IS NOT NULL ', table=self.table)
-        return Expression(query=f'{self.name} != {convert_type_to_sql(other)} ', table=self.table)
+            return Expression(query=f'{self.name} IS NOT NULL', table=self.table)
+        return Expression(query=f'{self.name} != {convert_type_to_sql(other)}', table=self.table)
 
     def isin(self, options: Sequence) -> Expression:
         """
@@ -623,7 +702,7 @@ class Column:
         :return: Expression
         """
         options = sql_tuple(options)
-        return Expression(query=f'{self.name} IN {options} ', table=self.table)
+        return Expression(query=f'{self.name} IN {options}', table=self.table)
 
     def between(self, x: Numeric, y: Numeric) -> Expression:
         """
@@ -632,7 +711,7 @@ class Column:
         :param y: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} BETWEEN {x} AND {y} ', table=self.table)
+        return Expression(query=f'{self.name} BETWEEN {x} AND {y}', table=self.table)
 
     def like(self, regex: str) -> Expression:
         """
@@ -640,15 +719,16 @@ class Column:
         :param regex: str
         :return: Expression
         """
-        return Expression(query=f"{self.name} LIKE '{regex}' ", table=self.table)
+        return Expression(query=f"{self.name} LIKE '{regex}'", table=self.table)
 
-    def ilike(self, regex: str) -> Expression:
-        """
-
-        :param regex: str
-        :return: Expression
-        """
-        return Expression(query=f"{self.name} ILIKE '{regex}' ", table=self.table)
+    # SQLite3 doesn't support ILIKE
+    # def ilike(self, regex: str) -> Expression:
+    #     """
+    #
+    #     :param regex: str
+    #     :return: Expression
+    #     """
+    #     return Expression(query=f"{self.name} ILIKE '{regex}'", table=self.table)
 
 
 class ColumnView(Column):

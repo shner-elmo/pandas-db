@@ -119,6 +119,7 @@ class TestColumn(unittest.TestCase):
                 )
 
     def test_median(self):
+        # TODO add tests for columns with len of 4 and 5
         for table in self.db.tables:
             for name, col in self.db[table].items():
                 if col.data_is_numeric():
@@ -301,7 +302,7 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
-        out = self.table.iloc[len(self.table) + 5:]
+        out = self.column.iloc[len(self.column) + 5:]
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 0)
 
@@ -375,7 +376,7 @@ class TestColumnLogicalOp(unittest.TestCase):
     def test_gt(self):
         exp = self.column > 12.32
         self.assertIsInstance(exp, Expression)
-        self.assertEqual(exp.query, f'{self.column.name} > 12.32 ')
+        self.assertEqual(exp.query, f'{self.column.name} > 12.32')
 
     # TODO: finish Expression tests
     def test_ge(self):

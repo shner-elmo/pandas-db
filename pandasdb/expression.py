@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from .exceptions import ExpressionError
 
 
@@ -20,7 +18,7 @@ class Expression:
             raise TypeError(f'parameter query must be of type str, not: {type(query)}')
 
         self.query = query
-        self.table = table  # TODO remove self.table attribute?
+        self.table = table
 
     def __and__(self, expression: Expression) -> Expression:
         """
@@ -65,61 +63,3 @@ class Expression:
     def __repr__(self) -> str:
         """ Get string representation of Expression instance """
         return __class__.__name__ + f'(query={repr(self.query)}, table={repr(self.table)})'
-
-
-class OrderBy:
-    def __init__(self, column: str | list[str] | dict[str, Literal['ASC', 'DESC']], ascending: bool = True) -> None:
-        """
-        An object that represents an SQL ORDER-BY statement
-
-        You can pass:
-        1) A column-name with the optional parameter 'ascending'
-        2) A list of column names, which will all be ordered ascending
-        3) A dictionary with the column-name and the sorting order, for ex:
-        {'col1': 'ASC', 'col2': 'DESC', 'col3': 'ASC'}
-
-        :param column: str | list | dict, column or list of columns
-        :param ascending: bool, default True
-        """
-        if isinstance(column, str):
-            self.cols = f'{column} {"ASC" if ascending else "DESC"}'
-
-        elif isinstance(column, list):
-            self.cols = f'{", ".join(column)}'
-
-        elif isinstance(column, dict):
-            cols = [f'{col} {sort_order}' for col, sort_order in column.items()]
-            self.cols = f'{", ".join(cols)}'
-
-        else:
-            raise TypeError(f'column parameter must be str, list, or dict, not: {type(column)}')
-
-        # save args for repr()
-        self._column = column
-        self._ascending = ascending
-
-    def __str__(self) -> str:
-        """ Get string representation of Expression instance """
-        return f'SELECT ... ORDER BY {self.cols}'
-
-    def __repr__(self) -> str:
-        """ Get string representation of Expression instance """
-        return __class__.__name__ + f'(column={repr(self._column)}, ascending={self._ascending})'
-
-
-class Limit:
-    def __init__(self, limit: int) -> None:
-        """
-        An object that represents an SQL LIMIT statement
-
-        :param limit: int
-        """
-        self.limit = limit
-
-    def __str__(self) -> str:
-        """ Get string representation of Expression instance """
-        return f'SELECT ... LIMIT {self.limit}'
-
-    def __repr__(self) -> str:
-        """ Get string representation of Expression instance """
-        return __class__.__name__ + f'(limit={self.limit})'

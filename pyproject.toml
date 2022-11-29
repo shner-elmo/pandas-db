@@ -4,3 +4,10 @@ requires = [
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+# PY-Version >= 3.10
+# TODO add dependencies
+
+https://github.com/nedbat/pkgsample/blob/main/pyproject.toml
+https://github.com/pandas-dev/pandas/blob/main/pyproject.toml
+https://peps.python.org/pep-0633/

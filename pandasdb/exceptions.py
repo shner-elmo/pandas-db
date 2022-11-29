@@ -4,6 +4,11 @@ class FileTypeError(Exception):
     pass
 
 
+class ViewAlreadyExists(Exception):
+    """ Raised when the user tries to create an SQL View that already exists"""
+    pass
+
+
 class InvalidTableError(Exception):
     """ Raised when requested table isn't present in the DataBase """
     pass

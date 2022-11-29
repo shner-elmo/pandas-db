@@ -7,7 +7,6 @@ from collections.abc import Generator
 from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.exceptions import FileTypeError, ConnectionClosedWarning
-from pandasdb.utils import create_view
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -82,17 +81,6 @@ class TestConnection(unittest.TestCase):
         views = set(self.db.views)
         shared_items = tables & views
         self.assertEqual(len(shared_items), 0)
-
-    def test_drop_view(self):
-        view_name = 'test_view1'
-        create_view(
-            conn=self.db.conn,
-            view_name=view_name,
-            query=f'SELECT * FROM {self.db.tables[0]}'
-        )
-        self.assertTrue(view_name in self.db.views)
-        self.db.drop_view(view_name)
-        self.assertTrue(view_name not in self.db.views)
 
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])
