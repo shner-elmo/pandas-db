@@ -13,6 +13,7 @@ from .utils import create_temp_view, get_random_name, sql_tuple, convert_type_to
 ColumnValue = str | int | float | bool | None
 Numeric = int | float
 T = TypeVar('T')
+ROWID = '_rowid_ AS _rowid_'  # select rowid/oid/_rowid_ as _rowid_
 
 
 class IndexLoc:
@@ -414,7 +415,7 @@ class Column:
         """
         view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
         query = f"""
-        SELECT _rowid_ AS _rowid_, {self.name}
+        SELECT {ROWID}, {self.name}
         FROM {self.table}
         LIMIT {limit}
         """
@@ -477,6 +478,24 @@ class Column:
         """
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
+    # def astype(self, py_type) -> ColumnView:
+    #     """
+    #     Convert/ cast data to given type (if possible)
+    #
+    #     :param py_type: data-type: str, int, float
+    #     :return: ColumnView
+    #     """
+    #     # sqlite3 data types: https://www.sqlite.org/datatype3.html
+    #     valid_types = (str, int, float, bool)
+    #     if py_type not in valid_types:
+    #         raise ValueError(f'Type must be one of the following: {valid_types}')
+    #
+    #     py_to_sql_types = {str: 'TEXT', int: 'INTEGER', float: 'REAL', bool: 'BOOLEAN'}
+    #     return self._create_and_get_temp_view(
+    #         view_name=f'_col_casted_{self.table}_{self.name}_{get_random_name(size=10)}_',
+    #         query=f'SELECT CAST({self.name} AS {py_to_sql_types[py_type]}, {ROWID} FROM {self.table}'
+    #     )
+
     def _create_and_get_temp_view(self, view_name: str, query: str) -> ColumnView:
         """
         Create a temporary-view (gets auto deleted at the end of the session) and return a new ColumnView instance
@@ -499,7 +518,7 @@ class Column:
             col_name=self.name
         )
 
-    def __getitem__(self, item: int | slice | list | Expression | tuple) -> Any:
+    def __getitem__(self, item: int | slice | list | Expression) -> Any:
         """
         Return index slice or filtered Column
 
@@ -568,11 +587,11 @@ class Column:
         """ Return column in HTML """
         return self._repr_df().to_html(show_dimensions=False, max_rows=10)
 
-    def __add__(self, other: Column | Iterable | str | int | float | bool) -> Generator:
+    def __add__(self, other: Column | Iterable | Numeric | str) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
 
-        :param other: Column | Iterable | str | int | float | bool
+        :param other: Column | Iterable | int | float | bool | str
         :return: Generator
         """
         if isinstance(other, str) or not isinstance(other, Iterable):
@@ -584,7 +603,7 @@ class Column:
             else:
                 yield x + y
 
-    def __sub__(self, other: Column | Iterable | Numeric) -> Generator:
+    def __sub__(self, other: Column | Iterable | Numeric) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
 
@@ -600,7 +619,7 @@ class Column:
             else:
                 yield x - y
 
-    def __mul__(self, other: Column | Iterable | Numeric) -> Generator:
+    def __mul__(self, other: Column | Iterable | Numeric) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
 
@@ -616,7 +635,7 @@ class Column:
             else:
                 yield x * y
 
-    def __truediv__(self, other: Column | Iterable | Numeric) -> Generator:
+    def __truediv__(self, other: Column | Iterable | Numeric) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
 
@@ -632,7 +651,7 @@ class Column:
             else:
                 yield x / y
 
-    def __floordiv__(self, other: Column | Iterable | Numeric) -> Generator:
+    def __floordiv__(self, other: Column | Iterable | Numeric) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
 

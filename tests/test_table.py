@@ -58,7 +58,6 @@ class TestTable(unittest.TestCase):
 
         shape = self.table.len, len(first_row)
         self.assertEqual(self.table.shape, shape)
-        print(self.table.shape)
         self.assertEqual(self.table.shape, self.table.to_df().shape)
 
     def test_describe(self):
@@ -211,6 +210,12 @@ class TestTable(unittest.TestCase):
             self.table.iloc.__getitem__, index
         )
 
+    def test_filter(self):
+        raise NotImplementedError
+
+    def test_sort_values(self):
+        raise NotImplementedError
+
     def test_iter(self):
         self.assertIsInstance(iter(self.table), Generator)
 
@@ -245,6 +250,9 @@ class TestTable(unittest.TestCase):
 
             self.assertEqual(id(col_obj), id(attr_col))
 
+    def test_getitem(self):
+        raise NotImplementedError
+
     def test_hash(self):
         self.assertIsInstance(hash(self.table), int)
 
@@ -257,7 +265,20 @@ class TestTable(unittest.TestCase):
     def test_repr(self):
         self.assertIsInstance(repr(self.table), str)
         self.assertIsInstance(str(self.table), str)
+
+    def test_repr_html_(self):
         self.assertIsInstance(self.table._repr_html_(), str)
+
+
+class TestTableView(unittest.TestCase):
+    def test_query(self):
+        raise NotImplementedError
+
+    def test_columns(self):
+        # assert len(TableView.cols) == len(Table.cols)
+        # rowid_cols = ('rowid', 'oid', '_rowid_')
+        # assert not any(col in rowid_cols for col in self.cols)
+        raise NotImplementedError
 
 
 if __name__ == '__main__':

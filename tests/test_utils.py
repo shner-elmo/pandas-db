@@ -1,6 +1,5 @@
 import unittest
 import sqlite3
-import random
 from typing import Any
 
 from pandasdb.utils import *
@@ -48,9 +47,6 @@ class TestUtils(unittest.TestCase):
             get_random_name(), get_random_name()
         }
         self.assertEqual(len(random_names), 6)
-
-    def test_create_view(self):
-        raise NotImplementedError
 
     def test_create_temp_view(self):
         def get_temp_views() -> list:

@@ -27,3 +27,8 @@ class ExpressionError(Exception):
 class ConnectionClosedWarning(Warning):
     """ Raised when using a closed SQL connection """
     pass
+
+
+class DatabaseError(Exception):
+    """ Base Database Error """
+    pass

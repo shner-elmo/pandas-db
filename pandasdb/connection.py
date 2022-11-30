@@ -59,6 +59,7 @@ class Database:
         """
         path = Path(db_path)
         self.db_path = db_path
+        self.name = path.name
 
         extension = path.suffix
         valid_extension = ('.sql', '.db', '.sqlite', '.sqlite3')

@@ -18,7 +18,6 @@ __all__ = [
     'sql_tuple',
     'sqlite_conn_open',
     'get_random_name',
-    'create_view',
     'create_temp_view',
     'concat',
     'get_mb_size',
@@ -96,31 +95,6 @@ def get_random_name(size: int = 10) -> str:
     :return: str
     """
     return ''.join(random.choices(string.ascii_lowercase, k=size))
-
-
-def create_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_exists: bool = False) -> None:
-    """
-    Create view from given sql query
-
-    :param conn: sqlite3 connection
-    :param view_name: str
-    :param query: str, select query
-    :param drop_if_exists: bool, default False
-    :raises: ValueError if view_name already exists
-    :return: None
-    """
-    with conn as cursor:
-        views: Iterable[str] = (x[0] for x in cursor.execute("SELECT name FROM sqlite_master WHERE type='view'"))
-
-    if view_name in views:
-        if drop_if_exists:
-            with conn as cursor:
-                cursor.execute(f'DROP VIEW {view_name}')
-        else:
-            raise ViewAlreadyExists(f"view {view_name} already exists")
-
-    with conn as cursor:
-        cursor.execute(f"CREATE VIEW {view_name} AS {query}")
 
 
 def create_temp_view(conn: sqlite3.Connection, view_name: str, query: str, drop_if_exists: bool = False) -> None:

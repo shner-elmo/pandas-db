@@ -7,6 +7,7 @@ from collections.abc import Generator
 from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.exceptions import FileTypeError, ConnectionClosedWarning
+from pandasdb.utils import create_temp_view
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -83,10 +84,24 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(len(shared_items), 0)
 
     def test_temp_tables(self):
-        raise NotImplementedError
+        out = self.db.temp_tables
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 0)  # should be empty right after creating the SQL connection
 
     def test_temp_views(self):
-        raise NotImplementedError
+        db = Database(MAIN_Database, cache=False)
+        out = db.temp_views
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 0)  # should be empty right after creating the SQL connection
+
+        name = 'test_view_1'
+        query = f'SELECT * FROM {db.tables[0]} LIMIT 50'
+        create_temp_view(conn=db.conn, view_name=name, query=query, drop_if_exists=False)
+        self.assertIn(member=name, container=db.temp_views)
+
+        with db.conn as cur:
+            cur.execute(f'DROP VIEW {name}')
+        self.assertNotIn(member=name, container=db.temp_views)
 
     def test_get_columns(self):
         out = self.db.get_columns(self.db.tables[0])

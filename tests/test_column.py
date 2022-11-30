@@ -6,7 +6,7 @@ from collections.abc import Generator
 
 from pandasdb import Database
 from pandasdb.table import Table
-from pandasdb.column import Column
+from pandasdb.column import Column, ColumnView
 from pandasdb.expression import Expression
 from pandasdb.utils import sort_iterable_with_none_values
 
@@ -369,15 +369,36 @@ class TestColumn(unittest.TestCase):
             self.assertEqual(sliced_column, list(out))
 
     def test_filter(self):
-        for _, table in self.db.items():
-            for _, col in table.items():
-                if col.data_is_numeric():
-                    out = self.column.filter()
-                else:
-                    out = self.column.filter()
+        self.assertTrue(
+            DB_FILE.endswith('forestation.db'),
+            'Database must be forestation.db for the following test to work'
+        )
+        df = self.db.forest_area
+        name = 'Aruba'
+        filtered_table = df.filter(df.country_name == name)
+        filtered_col = df.country_name.filter(df.country_name == name)
+
+        self.assertTrue(filtered_table.shape[1] == df.shape[1] == len(df.columns))
+        self.assertEqual(len(filtered_table), len(filtered_col))
+
+        for a, b in zip(filtered_table.country_name, filtered_col):
+            self.assertEqual(a, b)
+            self.assertEqual(a, name)
+
+    # def test_astype(self):
+    #     raise NotImplementedError
 
     def test_create_and_get_temp_view(self):
-        raise NotImplementedError
+        name = 'test_view_1'
+        new_col = self.column._create_and_get_temp_view(
+            view_name=name,
+            query=f'SELECT {self.column.name} FROM {self.column.table} LIMIT 10'
+        )
+        self.assertIsInstance(new_col, Column)
+        self.assertIsInstance(new_col, ColumnView)
+        self.assertEqual(len(new_col), 10)
+        new_col.min()
+        new_col.mode()
 
     def test_getitem(self):
         """
@@ -398,6 +419,22 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
+        self.assertTrue(
+            DB_FILE.endswith('forestation.db'),
+            'Database must be forestation.db for the following test to work'
+        )
+        df = self.db.forest_area
+        name = 'Aruba'
+        filtered_table = df[df.country_name == name]
+        filtered_col = df.country_name[df.country_name == name]
+
+        self.assertTrue(filtered_table.shape[1] == df.shape[1] == len(df.columns))
+        self.assertEqual(len(filtered_table), len(filtered_col))
+
+        for a, b in zip(filtered_table.country_name, filtered_col):
+            self.assertEqual(a, b)
+            self.assertEqual(a, name)
+
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)
 
@@ -416,6 +453,9 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(repr(self.column), str)
         self.assertIsInstance(str(self.column), str)
 
+    def test_repr_html_(self):
+        self.assertIsInstance(self.column._repr_html_(), str)
+
 
 class TestColumnLogicalOp(unittest.TestCase):
     """
@@ -433,6 +473,89 @@ class TestColumnLogicalOp(unittest.TestCase):
         exp = self.column > 12.32
         self.assertIsInstance(exp, Expression)
         self.assertEqual(exp.query, f'{self.column.name} > 12.32')
+
+    def test_add(self):
+        df = self.db.forest_area
+        new_col = df.year + df.year
+        for a, b in zip(new_col, df.year):
+            self.assertEqual(a, b + b)
+
+        col = self.db.forest_area.forest_area_sqkm
+        it = (2 for _ in range(len(col)))
+        new_col = col + it
+        for a, b in zip(new_col, col):
+            if a is not None:
+                self.assertEqual(a, b + 2)
+
+        for a, b in zip(col + 2.05, col):
+            if a is not None:
+                self.assertEqual(a, b + 2.05)
+
+        col = self.db.land_area.country_name
+        s = ' - Country name'
+        for idx, x in enumerate(col + s):
+            if idx == 0:
+                self.assertEqual(x, 'Aruba - Country name')
+            if x is not None:
+                self.assertTrue(x.endswith(s))
+
+        col = self.db.land_area.total_area_sq_mi
+        for a, b in zip(col + True, col):
+            if a is not None:
+                self.assertEqual(a, b + True)
+
+    def test_sub(self):
+        df = self.db.forest_area
+        new_col = df.year - df.year
+        for a, b in zip(new_col, df.year):
+            self.assertEqual(a, b - b)
+
+        col = self.db.forest_area.forest_area_sqkm
+        it = (2 for _ in range(len(col)))
+        new_col = col - it
+        for a, b in zip(new_col, col):
+            if a is not None:
+                self.assertEqual(a, b - 2)
+
+        for a, b in zip(col - 2.05, col):
+            if a is not None:
+                self.assertEqual(a, b - 2.05)
+
+    def test_mul(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (3 for _ in range(len(col)))
+        for a, b in zip(col, col * it):
+            if a is not None:
+                self.assertEqual(a * 3, b)
+
+        for a, b in zip(col, col * 1.25):
+            if a is not None:
+                self.assertEqual(a * 1.25, b)
+
+    def test_truediv(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (21.3 for _ in range(len(col)))
+        for a, b in zip(col, col / it):
+            if a is not None:
+                self.assertEqual(a / 21.3, b)
+
+        for a, b in zip(col, col / 1.25):
+            if a is not None:
+                self.assertEqual(a / 1.25, b)
+
+    def test_floordiv(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (3.3 for _ in range(len(col)))
+        for a, b in zip(col, col // it):
+            if a is not None:
+                self.assertEqual(a // 3.3, b)
+
+        for a, b in zip(col, col // 0.75):
+            if a is not None:
+                self.assertEqual(a // 0.75, b)
 
     # TODO: finish Expression tests
     def test_ge(self):
