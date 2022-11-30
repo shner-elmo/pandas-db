@@ -1,30 +1,40 @@
 import unittest
 
-from pandasdb import DataBase
-from pandasdb.table import Table
-from pandasdb.column import Column
-
-DB_FILE = '../data/forestation.db'
+from pandasdb.expression import Expression
 
 
 class TestExpression(unittest.TestCase):
-    def setUp(self) -> None:
-        self.db = DataBase(DB_FILE)
-        self.table: Table = self.db[self.db.tables[0]]
-        self.column: Column = getattr(self.table, self.table.columns[0])
-
-    def tearDown(self) -> None:
-        self.db.exit()
-
     def test_and(self):
-        pass
+        a = Expression(query='name == "jake"', table='accounts')
+        b = Expression(query='age >= 24', table='accounts')
+
+        a_and_b = a & b
+        self.assertEqual(a_and_b.query, 'name == "jake" AND age >= 24')
+
+        c = Expression(query='city_code IN ("LA", "NY", "LV")', table='accounts')
+        abc = a_and_b & c
+        query = 'name == "jake" AND age >= 24 AND city_code IN ("LA", "NY", "LV")'
+        self.assertEqual(abc.query, query)
 
     def test_or(self):
-        pass
+        a = Expression(query='name == "jake"', table='accounts')
+        b = Expression(query='age >= 24', table='accounts')
+
+        a_or_b = a | b
+        self.assertEqual(a_or_b.query, 'name == "jake" OR age >= 24')
+
+        c = Expression(query='city_code IN ("LA", "NY", "LV")', table='accounts')
+        three_expressions = a_or_b | c
+        query = 'name == "jake" OR age >= 24 OR city_code IN ("LA", "NY", "LV")'
+        self.assertEqual(three_expressions.query, query)
+
+    def test_str(self):
+        a = Expression(query='name == "jake"', table='accounts')
+        self.assertIn(member=a.query, container=str(a))
 
     def test_repr(self):
-        self.assertIsInstance(repr(self.column), str)
-        self.assertIsInstance(str(self.column), str)
+        a = Expression(query='name == "jake"', table='accounts')
+        eval(repr(a))
 
 
 if __name__ == '__main__':

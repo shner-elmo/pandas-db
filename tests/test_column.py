@@ -1,13 +1,14 @@
-from pandas import Series
+from pandas import Series, DataFrame
 import numpy as np
 
 import unittest
 from collections.abc import Generator
 
-from pandasdb import DataBase
+from pandasdb import Database
 from pandasdb.table import Table
-from pandasdb.column import Column
+from pandasdb.column import Column, ColumnView
 from pandasdb.expression import Expression
+from pandasdb.utils import sort_iterable_with_none_values, get_random_name
 
 
 DB_FILE = '../data/forestation.db'
@@ -18,9 +19,10 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestColumn(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DataBase(DB_FILE)
+        self.db = Database(DB_FILE, cache=False)
         self.table: Table = self.db[self.db.tables[0]]
-        self.column: Column = getattr(self.table, self.table.columns[0])
+        column = self.table.columns[0]
+        self.column: Column = self.table[column]
 
     def tearDown(self) -> None:
         self.db.exit()
@@ -55,7 +57,7 @@ class TestColumn(unittest.TestCase):
             self.assertGreater(length, 0)
 
             with self.db.conn as cursor:
-                n_rows = len(cursor.execute(self.table._query).fetchall())
+                n_rows = len(cursor.execute(self.table.query).fetchall())
 
             self.assertEqual(n_rows, length)
             self.assertEqual(col.len, col.count() + col.na_count())
@@ -72,6 +74,12 @@ class TestColumn(unittest.TestCase):
             out = col.na_count()
             self.assertIsInstance(out, int)
             self.assertEqual(col.na_count() + col.count(), col.len)
+
+            c = 0
+            for x in col:
+                if x is None:
+                    c += 1
+            self.assertEqual(c, out)
 
     def test_min(self):
         for name, col in self.table.items():
@@ -112,6 +120,7 @@ class TestColumn(unittest.TestCase):
                 )
 
     def test_median(self):
+        # TODO add tests for columns with len of 4 and 5
         for table in self.db.tables:
             for name, col in self.db[table].items():
                 if col.data_is_numeric():
@@ -141,7 +150,7 @@ class TestColumn(unittest.TestCase):
 
     def test_describe(self):
         for name, col in self.table.items():
-            col_dict = col.describe()
+            col_dict: dict[str, float] = col.describe()
             ser: Series = col.to_series()
 
             if col.data_is_numeric():
@@ -193,10 +202,10 @@ class TestColumn(unittest.TestCase):
         out = self.column.to_series()
         self.assertIsInstance(out, Series)
         self.assertEqual(out.size, self.column.len)
-        self.assertEqual(out.name, self.column._name)
+        self.assertEqual(out.name, self.column.name)
 
         with self.db.conn as cursor:
-            query = next(cursor.execute(self.column._query))[0]  # returns tuple, ex: ('AMD',)
+            query = next(cursor.execute(self.column.query))[0]  # returns tuple, ex: ('AMD',)
         ser = out.iloc[0]
         col = next(iter(self.column))
 
@@ -210,6 +219,17 @@ class TestColumn(unittest.TestCase):
 
         data = self.column.data(5)
         self.assertEqual(len(data), 5)
+
+    def test_sample(self):
+        out = self.column.sample()
+        self.assertIsInstance(out, list)
+        self.assertNotIsInstance(out[0], (list, tuple))
+
+        a = self.column.sample(10)
+        b = self.column.sample(10)
+        self.assertEqual(len(a), len(b))
+        self.assertEqual(len(a), 10)
+        self.assertNotEqual(a, b)
 
     def test_apply(self):
         for name, col in self.table.items():
@@ -294,11 +314,15 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
+        out = self.column.iloc[len(self.column) + 5:]
+        self.assertIsInstance(out, list)
+        self.assertEqual(len(out), 0)
+
         types = [dict(), set(), tuple(), 3.32, '3.32']
         for i in types:
             self.assertRaisesRegex(
                 TypeError,
-                f'Index must be of type: int, list, or slice, not: {type(i)}',
+                f'Index must be of type: int, list, or slice. not: {type(i)}',
                 self.column.iloc.__getitem__, i
             )
 
@@ -315,6 +339,67 @@ class TestColumn(unittest.TestCase):
             'Given index out of range',
             self.column.iloc.__getitem__, index
         )
+
+    def test_not_null(self):
+        for _, table in self.db.items():
+            for _, col in table.items():
+                null_count = col.na_count()
+                if null_count == 0:
+                    self.assertEqual(len(col), len(col.not_null()))
+                    self.assertFalse(any(x is None for x in col))
+                else:
+                    self.assertTrue(any(x is None for x in col))
+                    self.assertFalse(any(x is None for x in col.not_null()))
+                    self.assertEqual(len(col), len(col.not_null()) + null_count)
+
+    def test_sort_values(self):
+        for _, table in self.db.items():
+            for _, col in table.items():
+                py_sorted_col = sort_iterable_with_none_values(col)
+                sql_sorted_col = list(col.sort_values())
+                self.assertEqual(len(py_sorted_col), len(sql_sorted_col))
+                self.assertEqual(py_sorted_col, sql_sorted_col)
+
+    def test_limit(self):
+        for i in (0, 1, 2, 5, 10, 50, 100):
+            out = self.column.limit(i)
+            self.assertEqual(len(out), i)
+            sliced_column: list = self.column.iloc[:i]
+            self.assertEqual(len(sliced_column), len(out))
+            self.assertEqual(sliced_column, list(out))
+
+    def test_filter(self):
+        self.assertTrue(
+            DB_FILE.endswith('forestation.db'),
+            'Database must be forestation.db for the following test to work'
+        )
+        df = self.db.forest_area
+        name = 'Aruba'
+        filtered_col = df.country_name.filter(df.country_name == name)
+
+        self.assertTrue(len(filtered_col) < len(df))
+        self.assertTrue(set(filtered_col).issubset(df.country_name))
+
+    def test_create_and_get_temp_view(self):
+        name = f'test_view_{get_random_name(10)}'
+        query = f'SELECT _rowid_, {self.column.name} FROM {self.column.table} LIMIT 10'
+        self.assertRaisesRegex(
+            ValueError,
+            'Query must alias the rowid column as `_rowid_` for `iloc` to work.',
+            self.column._create_and_get_temp_view, view_name=name, query=query
+        )
+
+        n_temp_views = len(self.db.temp_views)
+        query = f'SELECT _rowid_ AS _rowid_, {self.column.name} FROM {self.column.table} LIMIT 10'
+        out = self.column._create_and_get_temp_view(view_name=name, query=query)
+        col = self.column
+        self.assertGreater(len(self.db.temp_views), n_temp_views)
+
+        self.assertIsInstance(out, ColumnView)
+        self.assertEqual(len(out), 10)
+        self.assertEqual(next(iter(out)), next(iter(col)))
+        self.assertEqual(out.iloc[0], col.iloc[0])
+        self.assertEqual(out.iloc[9], col.iloc[9])
 
     def test_getitem(self):
         """
@@ -335,6 +420,17 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 11)
 
+        self.assertTrue(
+            DB_FILE.endswith('forestation.db'),
+            'Database must be forestation.db for the following test to work'
+        )
+        df = self.db.forest_area
+        name = 'Aruba'
+        filtered_col = df.country_name[df.country_name == name]
+
+        self.assertTrue(len(filtered_col) < len(df))
+        self.assertTrue(set(filtered_col).issubset(df.country_name))
+
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)
 
@@ -344,9 +440,17 @@ class TestColumn(unittest.TestCase):
     def test_hash(self):
         self.assertIsInstance(hash(self.column), int)
 
+    def test_repr_df(self):
+        df = self.table._repr_df()
+        self.assertIsInstance(df, DataFrame)
+        self.assertEqual(len(df), 20)
+
     def test_repr(self):
         self.assertIsInstance(repr(self.column), str)
         self.assertIsInstance(str(self.column), str)
+
+    def test_repr_html_(self):
+        self.assertIsInstance(self.column._repr_html_(), str)
 
 
 class TestColumnLogicalOp(unittest.TestCase):
@@ -354,10 +458,9 @@ class TestColumnLogicalOp(unittest.TestCase):
     Test logical operators for Column objects (db.table.col >= 20, db.table.col.between(10, 25))
     """
     def setUp(self) -> None:
-        self.db = DataBase(DB_FILE)
+        self.db = Database(DB_FILE, block_till_ready=True)
         self.table: Table = self.db[self.db.tables[0]]
         self.column: Column = getattr(self.table, self.table.columns[0])
-        self.col: str = f'{self.column._table}.{self.column._name}'
 
     def tearDown(self) -> None:
         self.db.exit()
@@ -365,7 +468,90 @@ class TestColumnLogicalOp(unittest.TestCase):
     def test_gt(self):
         exp = self.column > 12.32
         self.assertIsInstance(exp, Expression)
-        self.assertEqual(exp.query, self.col + f' > 12.32 ')
+        self.assertEqual(exp.query, f'{self.column.name} > 12.32')
+
+    def test_add(self):
+        df = self.db.forest_area
+        new_col = df.year + df.year
+        for a, b in zip(new_col, df.year):
+            self.assertEqual(a, b + b)
+
+        col = self.db.forest_area.forest_area_sqkm
+        it = (2 for _ in range(len(col)))
+        new_col = col + it
+        for a, b in zip(new_col, col):
+            if a is not None:
+                self.assertEqual(a, b + 2)
+
+        for a, b in zip(col + 2.05, col):
+            if a is not None:
+                self.assertEqual(a, b + 2.05)
+
+        col = self.db.land_area.country_name
+        s = ' - Country name'
+        for idx, x in enumerate(col + s):
+            if idx == 0:
+                self.assertEqual(x, 'Aruba - Country name')
+            if x is not None:
+                self.assertTrue(x.endswith(s))
+
+        col = self.db.land_area.total_area_sq_mi
+        for a, b in zip(col + True, col):
+            if a is not None:
+                self.assertEqual(a, b + True)
+
+    def test_sub(self):
+        df = self.db.forest_area
+        new_col = df.year - df.year
+        for a, b in zip(new_col, df.year):
+            self.assertEqual(a, b - b)
+
+        col = self.db.forest_area.forest_area_sqkm
+        it = (2 for _ in range(len(col)))
+        new_col = col - it
+        for a, b in zip(new_col, col):
+            if a is not None:
+                self.assertEqual(a, b - 2)
+
+        for a, b in zip(col - 2.05, col):
+            if a is not None:
+                self.assertEqual(a, b - 2.05)
+
+    def test_mul(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (3 for _ in range(len(col)))
+        for a, b in zip(col, col * it):
+            if a is not None:
+                self.assertEqual(a * 3, b)
+
+        for a, b in zip(col, col * 1.25):
+            if a is not None:
+                self.assertEqual(a * 1.25, b)
+
+    def test_truediv(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (21.3 for _ in range(len(col)))
+        for a, b in zip(col, col / it):
+            if a is not None:
+                self.assertEqual(a / 21.3, b)
+
+        for a, b in zip(col, col / 1.25):
+            if a is not None:
+                self.assertEqual(a / 1.25, b)
+
+    def test_floordiv(self):
+        col = self.db.forest_area.forest_area_sqkm
+
+        it = (3.3 for _ in range(len(col)))
+        for a, b in zip(col, col // it):
+            if a is not None:
+                self.assertEqual(a // 3.3, b)
+
+        for a, b in zip(col, col // 0.75):
+            if a is not None:
+                self.assertEqual(a // 0.75, b)
 
     # TODO: finish Expression tests
     def test_ge(self):
