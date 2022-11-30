@@ -3,7 +3,7 @@ from __future__ import annotations
 from pandas import DataFrame
 
 import sqlite3
-from typing import Generator, Callable, Any, overload
+from typing import Generator, Callable, Any, overload, Literal
 
 from .exceptions import InvalidColumnError
 from .column import Column
@@ -13,6 +13,7 @@ from .utils import create_temp_view, get_random_name, sql_tuple
 
 PrimitiveTypes = str | int | float | bool | None
 TableRow = tuple[PrimitiveTypes, ...]
+ROWID = '_rowid_ AS _rowid_'  # select rowid/oid/_rowid_ as _rowid_
 
 
 class IndexLoc:
@@ -118,9 +119,8 @@ class Table:
         :param name: str, table name
         """
         self.conn = conn
-        self._cache = cache
         self.name = name
-        self._query = f'SELECT * FROM {self.name}'
+        self._cache = cache
         self._column_items: dict[str, Column] = {}
 
         for column in self.columns:
@@ -129,9 +129,13 @@ class Table:
     @property
     def query(self) -> str:
         """
-        Return query that represents the table (SELECT * FROM table)
+        Get the "SELECT *" query for the table
+
+        The returned query is a property so if any column is added/ removed, the query will be updated.
+        note that the rowid column is filtered out in 'self.columns', you can read more about that
+        in the class docstring.
         """
-        return self._query
+        return f'SELECT {self._cols_as_str} FROM {self.name}'
 
     @property
     def columns(self) -> list[str]:
@@ -140,6 +144,13 @@ class Table:
         """
         with self.conn as cursor:
             return [x[1] for x in cursor.execute(f"PRAGMA table_info('{self.name}')")]
+
+    @property
+    def _cols_as_str(self) -> str:
+        """
+        Get a string of columns that can be passed directly to an SQL query
+        """
+        return ', '.join(self.columns)
 
     @property
     def len(self) -> int:
@@ -159,7 +170,7 @@ class Table:
         """
         Get a nested dictionary with the descriptive properties for each column in the table
 
-        :return: dict, {col1: {'min': 32, 'max': 83 ...}, col2 {'min': 'Alex', 'max': 'Zoey' ...} ...}
+        :return: dict, {col1: {'min': 32, 'max': 83 ...}, col2: {'min': 'Alex', 'max': 'Zoey' ...} ...}
         """
         return {name: col.describe() for name, col in self.items()}
 
@@ -242,26 +253,85 @@ class Table:
         """
         # TODO complete docstring
 
-        :param expression:
-        :return:
+        :param expression: Expression
+        :return: TableView
         """
         view_name = f'_table_{self.name}_{get_random_name(size=10)}_'
         query = f"""
-        SELECT 
-            ROW_NUMBER() OVER (ORDER BY _rowid_) AS _rowid_, *
+        SELECT ROW_NUMBER() OVER (ORDER BY _rowid_) AS _rowid_, {self._cols_as_str}
         FROM {self.name} 
         WHERE {expression.query}
         """
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
+
+    def sort_values(self, column: str | list[str] | dict[str, Literal['ASC', 'DESC']],
+                    ascending: bool = True) -> TableView:
+        """
+        Return a new table with the sorted data
+
+        You can pass:
+        1) A column-name with the optional parameter ascending
+        2) A list of column names, which will all be ordered ascending
+        3) A dictionary with the column-name and the sorting order, for ex:
+        {'col1': 'ASC', 'col2': 'DESC', 'col3': 'ASC'}
+
+        :param column: str | list | dict
+        :param ascending: bool, default True
+        """
+        if isinstance(column, str):
+            order_by_query = f'{column} {"ASC" if ascending else "DESC"}'
+
+        elif isinstance(column, list):
+            order_by_query = f'{", ".join(column)}'
+
+        elif isinstance(column, dict):
+            cols = [f'{col} {sort_order}' for col, sort_order in column.items()]
+            order_by_query = f'{", ".join(cols)}'
+
+        else:
+            raise TypeError(f'column parameter must be str, list, or dict, not: {type(column)}')
+
+        view_name = f'_table_sorted_{self.name}_{get_random_name(size=10)}_'
+        query = f"""
+        SELECT ROW_NUMBER() OVER (ORDER BY {order_by_query}) AS _rowid_, {self._cols_as_str}
+        FROM {self.name} 
+        """
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
+
+    def limit(self, n: int) -> TableView:
+        """
+        Return a new Table with n amount of rows
+
+        :param n: int
+        :return: TableView
+        """
+        view_name = f'_table_limit_{self.name}_{get_random_name(size=10)}_'
+        query = f'SELECT {ROWID}, {self._cols_as_str} FROM {self.name} LIMIT {n}'
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
+
+    def _create_and_get_temp_view(self, view_name: str, query: str) -> TableView:
+        """
+        Create a temporary-view (gets auto deleted at the end of the session) and return a new TableView instance
+
+        :param view_name: str
+        :param query: str
+        :return: TableView instance
+        """
+        if 'AS _rowid_' not in query:
+            raise ValueError('Query must alias the rowid column as `_rowid_` for `iloc` to work.')
+
         create_temp_view(
             conn=self.conn,
             view_name=view_name,
-            query=query
+            query=query,
+            drop_if_exists=False
         )
-        return TableView(conn=self.conn, cache=self._cache, name=view_name)
-
-    # def sort_values(self, columns: list[str]) -> TableView:
-    #     create_temp_view(conn=self.conn, )
-    #     return TableView(conn=self.conn, cache=self._cache, name=self.name)
+        return TableView(
+            conn=self.conn,
+            cache=self._cache,
+            name=view_name,
+            created_query=query
+        )
 
     def __iter__(self) -> Generator[TableRow, None, None]:
         """
@@ -279,7 +349,7 @@ class Table:
         :raise: InvalidColumnError
         """
         if column not in self.columns:
-            raise InvalidColumnError(f'Column must be one of the following: {", ".join(self.columns)}')
+            raise InvalidColumnError(f'Column must be one of the following: {self._cols_as_str}')
         return getattr(self, column)
 
     def _set_column(self, column: str) -> None:
@@ -295,25 +365,42 @@ class Table:
         if not hasattr(self, column):  # to avoid overwriting existing attributes and methods
             setattr(self, column, col_obj)
 
-    # TODO: add option for list of items/columns and return new Table object with selected columns
-    def __getitem__(self, item: str | Expression) -> Column | Table:
+    @overload
+    def __getitem__(self, item: str) -> Column:
+        ...
+
+    @overload
+    def __getitem__(self, item: Expression) -> TableView:
+        ...
+
+    # TODO: add option for list of columns and return new Table object with selected columns
+    # @overload
+    # def __getitem__(self, item: list[str]) -> TableView:
+    #     ...
+
+    def __getitem__(self, item: str | Expression) -> Column | TableView:
         """
         Get column object for given column name
 
-        :param item: str, column-name
+        :param item: str, Column | TableView
         :return: Column
         :raise: KeyError
         """
         if isinstance(item, Expression):
             return self.filter(item)
 
-        elif isinstance(item, str):
+        if isinstance(item, str):
             try:
                 return self._get_col(item)
             except InvalidColumnError:
-                raise KeyError(f'No such Column: {item}, must be one of the following: {", ".join(self.columns)}')
+                raise KeyError(f'No such Column: {item}, must be one of the following: {self._cols_as_str}')
 
         raise TypeError(f'Argument must be of type str or Expression. not: {type(item)}')
+
+    def __getattribute__(self, item) -> Any:
+        """ Get attribute """
+        # for avoiding 'Unresolved attribute' warnings (in Pycharm), this somehow fixes it
+        return super().__getattribute__(item)
 
     def __len__(self) -> int:
         """ Return amount of rows """
@@ -358,6 +445,23 @@ class Table:
         """ Return table in HTML """
         return self._repr_df().to_html(show_dimensions=False, max_rows=10)
 
+    def equals(self, other) -> bool:
+        """
+        Check if all the rows are exactly the same
+        """
+        if not isinstance(other, Table):
+            return False
+
+        if self.shape != other.shape:
+            return False
+
+        if id(self) == id(other):  # shortcut for same object from another variable
+            return True
+
+        if any(a != b for a, b in zip(self, other, strict=True)):
+            return False
+        return True
+
 
 class TableView(Table):
     """
@@ -374,32 +478,23 @@ class TableView(Table):
     but when we do 'SELECT * FROM my_view' we want to filter out the '_rowid_' column,
     so instead we pass the columns' property which will automatically filter it out.
     """
-    def __init__(self, conn: sqlite3.Connection, cache: Cache, name: str) -> None:
+    def __init__(self, conn: sqlite3.Connection, cache: Cache, name: str, created_query: str = None) -> None:
         """
         Initialize the Table object
 
         :param conn: sqlite3.Connection
         :param cache: Cache, instance of Cache
         :param name: str, table name
+        :param created_query: str | None
         """
         self.conn = conn
         self._cache = cache
         self.name = name
         self._column_items: dict[str, Column] = {}
+        self._created_query = created_query  # save the query used in creating the table-view for debugging
 
         for column in self.columns:
             self._set_column(column)
-
-    @property
-    def query(self) -> str:
-        """
-        Get the "SELECT *" query for the table
-
-        The returned query is a property so if any column is added/ removed, the query will be updated.
-        note that the rowid column is filtered out in 'self.columns', you can read more about that
-        in the class docstring.
-        """
-        return f'SELECT {", ".join(self.columns)} FROM {self.name}'
 
     @property
     def columns(self) -> list[str]:

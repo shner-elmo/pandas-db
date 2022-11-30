@@ -4,9 +4,10 @@ import unittest
 from collections.abc import Generator
 
 from pandasdb import Database
-from pandasdb.table import Table, IndexLoc
+from pandasdb.table import IndexLoc, Table, TableView
 from pandasdb.column import Column
 from pandasdb.exceptions import InvalidColumnError
+from pandasdb.utils import get_random_name
 
 
 DB_FILE = '../data/forestation.db'
@@ -20,7 +21,7 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestTable(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = Database(MAIN_DATABASE, block_till_ready=True)
+        self.db = Database(MAIN_DATABASE, cache=False)
         self.table: Table = self.db[self.db.tables[0]]
 
         tables = self.db.tables
@@ -37,6 +38,26 @@ class TestTable(unittest.TestCase):
         for col in self.table.columns:
             self.assertTrue(expr=hasattr(self.table, col),
                             msg=f'Columns: {col} not in Table attributes')
+
+    def test_query(self):
+        out = self.db.regions.query
+        table_query = 'SELECT country_name, country_code, region, income_group FROM regions'
+        self.assertNotIn(member='_rowid_', container=out)
+        self.assertNotIn(member='rowid', container=out)
+        self.assertEqual(out, table_query)
+
+        tbl = self.db.regions
+        table_view = tbl[tbl.country_code.isin(['ITA', 'GPY', 'USA'])]
+        out = table_view.query
+        self.assertIsInstance(table_view, TableView)
+        self.assertNotIn(member='_rowid_', container=out)
+        self.assertNotIn(member='rowid', container=out)
+
+        filtered_view = table_view[table_view.income_group == 'High income']  # filter the previous view
+        out = filtered_view.query
+        self.assertIsInstance(table_view, TableView)
+        self.assertNotIn(member='_rowid_', container=out)
+        self.assertNotIn(member='rowid', container=out)
 
     def test_columns(self):
         self.assertTrue(len(self.table.columns) >= 3)
@@ -211,10 +232,92 @@ class TestTable(unittest.TestCase):
         )
 
     def test_filter(self):
-        raise NotImplementedError
+        tbl = self.db.regions
+        out = tbl.filter(tbl.income_group == 'Low income')
+
+        self.assertEqual(len(self.db.temp_views), 1)
+        self.assertEqual(out.shape[1], tbl.shape[1])
+        self.assertEqual(out.columns, tbl.columns)
+        self.assertTrue(len(out) < len(tbl))
+        self.assertEqual(len(out), 34)
+
+        # filter the filtered table
+        out2 = out.filter(out.region == 'Sub-Saharan Africa')
+        self.assertEqual(out2.shape[1], tbl.shape[1])
+        self.assertEqual(out2.columns, tbl.columns)
+        self.assertTrue(len(out2) < len(out))
+        self.assertEqual(len(out2), 27)
+
+        out3 = out.filter(out.region.like('Sub-Saharan Africa'))
+        self.assertTrue(out3.equals(out2))
+
+        out4 = out.filter(out.region.like('Sub-Saharan Africa'.lower()))
+        self.assertTrue(out4.equals(out3))
+
+        combined_filter = tbl.filter((tbl.income_group == 'Low income') & (tbl.region.like('Sub-Saharan Africa')))
+        self.assertTrue(combined_filter.equals(out2))
+
+        filter_using_getitem = tbl[(tbl.income_group == 'Low income') & (tbl.region.like('Sub-Saharan Africa'))]
+        self.assertTrue(filter_using_getitem.equals(combined_filter))
 
     def test_sort_values(self):
-        raise NotImplementedError
+        tbl: Table = self.db.forest_area
+        out = tbl.sort_values(column='year', ascending=True)
+        self.assertIsInstance(out, Table)
+        self.assertIsInstance(out, TableView)
+        self.assertEqual(tbl.shape, out.shape)
+        self.assertEqual(tbl.columns, out.columns)
+
+        query = f'SELECT year FROM {out.name} WHERE year IS NOT NULL'
+        with out.conn as cur:
+            year_col: list[int] = [tup[0] for tup in cur.execute(query)]
+        self.assertEqual(year_col, sorted(year_col))  # assert its sorted correctly
+
+        tbl.sort_values(column='year', ascending=False)
+        tbl.sort_values(column=['country_code', 'country_name', 'year'])
+        tbl.sort_values(column={'country_code': 'ASC', 'country_name': 'DESC', 'year': 'ASC'})
+        out = tbl.sort_values(column={'forest_area_sqkm': 'DESC', 'country_code': 'ASC', 'year': 'ASC'})
+        self.assertEqual(tbl.shape, out.shape)
+        self.assertEqual(tbl.columns, out.columns)
+
+    def test_limit(self):
+        table = self.table
+        limit_table = self.table.limit(25)
+
+        self.assertIsInstance(limit_table, TableView)
+        self.assertEqual(len(limit_table), 25)
+        self.assertEqual(limit_table.columns, table.columns)
+
+        for a, b in zip(limit_table, table):
+            self.assertEqual(a, b)
+
+        # try using the _rowid_ column with iloc:
+        self.assertEqual(limit_table.iloc[0], table.iloc[0])
+        self.assertEqual(limit_table.iloc[-1], table.iloc[24])
+        self.assertEqual(next(iter(limit_table)), next(iter(table)))
+
+    def test_create_and_get_temp_view(self):
+        tbl: Table = self.db.regions
+
+        view_name = f'test_view_{get_random_name()}'
+        query = f'SELECT * FROM {tbl.name} LIMIT 20'
+        self.assertRaisesRegex(
+            ValueError,
+            'Query must alias the rowid column as `_rowid_` for `iloc` to work.',
+            tbl._create_and_get_temp_view, view_name=view_name, query=query
+        )
+
+        n_temp_views = len(self.db.temp_views)
+        query = f'SELECT rowid AS _rowid_, * FROM {tbl.name} LIMIT 20'
+        out = tbl._create_and_get_temp_view(view_name=view_name, query=query)
+        self.assertEqual(n_temp_views, len(self.db.temp_views) - 1)  # adds a new temporary view
+
+        self.assertIsInstance(out, TableView)
+        self.assertEqual(len(out), 20)
+        self.assertEqual(out.columns, tbl.columns)
+        self.assertEqual(next(iter(out)), next(iter(tbl)))
+        self.assertEqual(out.iloc[0], tbl.iloc[0])
+        self.assertEqual(out.iloc[19], tbl.iloc[19])
 
     def test_iter(self):
         self.assertIsInstance(iter(self.table), Generator)
@@ -233,7 +336,7 @@ class TestTable(unittest.TestCase):
 
         If a requested Column isn't present in the Table, InvalidColumnError is raised
         """
-        non_existing_column = 'abcd fgh'
+        non_existing_column = get_random_name(10)
         self.assertRaisesRegex(
             InvalidColumnError,
             f'^Column must be one of the following: {", ".join(self.table.columns)}$',
@@ -251,7 +354,26 @@ class TestTable(unittest.TestCase):
             self.assertEqual(id(col_obj), id(attr_col))
 
     def test_getitem(self):
-        raise NotImplementedError
+        tbl = self.db.forest_area
+        filtered_table = tbl[tbl.country_code == 'ITA']
+        self.assertIsInstance(filtered_table, TableView)
+
+        col_name = 'country_name'
+        out = tbl[col_name]
+        self.assertIsInstance(out, Column)
+
+        non_existent_column = get_random_name(10)
+        self.assertRaises(
+            KeyError,
+            tbl.__getitem__, non_existent_column
+        )
+
+        item = 42
+        self.assertRaisesRegex(
+            TypeError,
+            f'Argument must be of type str or Expression. not: {type(item)}',
+            tbl.__getitem__, item
+        )
 
     def test_hash(self):
         self.assertIsInstance(hash(self.table), int)
@@ -269,16 +391,50 @@ class TestTable(unittest.TestCase):
     def test_repr_html_(self):
         self.assertIsInstance(self.table._repr_html_(), str)
 
+    def test_equals(self):
+        db = self.db
+        self.assertFalse(db.forest_area.equals(db.land_area))
+        self.assertFalse(db.forest_area.equals(db.regions))
+
+        self.assertTrue(db.forest_area.equals(db.forest_area))
+        self.assertTrue(db.regions.equals(db.regions.limit(10000)))
+
 
 class TestTableView(unittest.TestCase):
-    def test_query(self):
-        raise NotImplementedError
+    def setUp(self) -> None:
+        self.db = Database(MAIN_DATABASE, cache=False)
+        self.table: Table = self.db[self.db.tables[0]]
+
+        tables = self.db.tables
+        self.assertGreaterEqual(len(tables), MIN_TABLES,
+                                msg='Database must have at least one table for the tests')
+
+        self.assertGreaterEqual(len(self.table.columns), MIN_COLUMNS,
+                                msg='Database must have at least 3 columns in the first table for the tests')
+
+    def tearDown(self) -> None:
+        self.db.exit()
 
     def test_columns(self):
-        # assert len(TableView.cols) == len(Table.cols)
-        # rowid_cols = ('rowid', 'oid', '_rowid_')
-        # assert not any(col in rowid_cols for col in self.cols)
-        raise NotImplementedError
+        table: Table = self.db.regions
+        table_view = table.limit(10)
+        view_cols = table_view.columns
+        table_cols = table.columns
+        self.assertNotIn(member='_rowid_', container=view_cols)
+        self.assertNotIn(member='rowid', container=view_cols)
+        self.assertEqual(view_cols, table_cols)
+
+        nested_view = table_view.limit(10)
+        self.assertIsInstance(table_view, TableView)
+        self.assertNotIn(member='_rowid_', container=nested_view.columns)
+        self.assertNotIn(member='rowid', container=nested_view.columns)
+        self.assertEqual(nested_view.columns, table.columns)
+
+        nested_view = nested_view.limit(10)
+        self.assertIsInstance(table_view, TableView)
+        self.assertNotIn(member='_rowid_', container=nested_view.columns)
+        self.assertNotIn(member='rowid', container=nested_view.columns)
+        self.assertEqual(nested_view.columns, table.columns)
 
 
 if __name__ == '__main__':

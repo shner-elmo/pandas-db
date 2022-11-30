@@ -404,21 +404,17 @@ class Column:
         """
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
-    def limit(self, limit: int) -> ColumnView:
+    def limit(self, n: int) -> ColumnView:
         """
         Return a new column limits the amount of rows in a column
 
-        (creates a view with: f"SELECT ... LIMIT {limit}")
+        (creates a view with: f"SELECT ... LIMIT {n}")
 
-        :param limit: int
+        :param n: int
         :return: ColumnView
         """
         view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
-        query = f"""
-        SELECT {ROWID}, {self.name}
-        FROM {self.table}
-        LIMIT {limit}
-        """
+        query = f"SELECT {ROWID}, {self.name} FROM {self.table} LIMIT {n}"
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
     def filter(self, expression: Expression) -> ColumnView:
@@ -504,6 +500,9 @@ class Column:
         :param query: str
         :return: ColumnView instance
         """
+        if 'AS _rowid_' not in query:
+            raise ValueError('Query must alias the rowid column as `_rowid_` for `iloc` to work.')
+
         create_temp_view(
             conn=self.conn,
             view_name=view_name,
@@ -511,11 +510,11 @@ class Column:
             drop_if_exists=False
         )
         return ColumnView(
-            created_query=query,
             conn=self.conn,
             cache=self._cache,
             table_name=view_name,
-            col_name=self.name
+            col_name=self.name,
+            created_query=query
         )
 
     def __getitem__(self, item: int | slice | list | Expression) -> Any:
@@ -745,7 +744,7 @@ class Column:
         """
         return Expression(query=f"{self.name} LIKE '{regex}'", table=self.table)
 
-    # SQLite3 doesn't support ILIKE
+    # SQLite3 doesn't support ILIKE (LIKE is already case-insensitive)
     # def ilike(self, regex: str) -> Expression:
     #     """
     #
@@ -760,20 +759,20 @@ class ColumnView(Column):
     A ColumnView is created everytime we filter an existing Column.
     (from Column.filter() or Column[<expression>]
     """
-    def __init__(self, created_query: str, conn: sqlite3.Connection, cache: Cache,
-                 table_name: str, col_name: str) -> None:
+    def __init__(self, conn: sqlite3.Connection, cache: Cache,
+                 table_name: str, col_name: str, created_query: str = None) -> None:
         """
         Initialize the Column object
 
-        :param created_query: str
         :param conn: sqlite3.Connection
         :param cache: Cache, instance of Cache
         :param table_name: str
         :param col_name: str
+        :param created_query: None | str
         """
-        self._created_query = created_query  # save the query used in creating the column-view for debugging
         self.conn = conn
         self._cache = cache
         self.table = table_name
         self.name = col_name
         self.query = f'SELECT {col_name} FROM {table_name}'
+        self._created_query = created_query  # save the query used in creating the column-view for debugging

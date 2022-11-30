@@ -8,7 +8,7 @@ from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.column import Column, ColumnView
 from pandasdb.expression import Expression
-from pandasdb.utils import sort_iterable_with_none_values
+from pandasdb.utils import sort_iterable_with_none_values, get_random_name
 
 
 DB_FILE = '../data/forestation.db'
@@ -19,7 +19,7 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestColumn(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = Database(DB_FILE, block_till_ready=True)
+        self.db = Database(DB_FILE, cache=False)
         self.table: Table = self.db[self.db.tables[0]]
         column = self.table.columns[0]
         self.column: Column = self.table[column]
@@ -375,30 +375,31 @@ class TestColumn(unittest.TestCase):
         )
         df = self.db.forest_area
         name = 'Aruba'
-        filtered_table = df.filter(df.country_name == name)
         filtered_col = df.country_name.filter(df.country_name == name)
 
-        self.assertTrue(filtered_table.shape[1] == df.shape[1] == len(df.columns))
-        self.assertEqual(len(filtered_table), len(filtered_col))
-
-        for a, b in zip(filtered_table.country_name, filtered_col):
-            self.assertEqual(a, b)
-            self.assertEqual(a, name)
-
-    # def test_astype(self):
-    #     raise NotImplementedError
+        self.assertTrue(len(filtered_col) < len(df))
+        self.assertTrue(set(filtered_col).issubset(df.country_name))
 
     def test_create_and_get_temp_view(self):
-        name = 'test_view_1'
-        new_col = self.column._create_and_get_temp_view(
-            view_name=name,
-            query=f'SELECT {self.column.name} FROM {self.column.table} LIMIT 10'
+        name = f'test_view_{get_random_name(10)}'
+        query = f'SELECT _rowid_, {self.column.name} FROM {self.column.table} LIMIT 10'
+        self.assertRaisesRegex(
+            ValueError,
+            'Query must alias the rowid column as `_rowid_` for `iloc` to work.',
+            self.column._create_and_get_temp_view, view_name=name, query=query
         )
-        self.assertIsInstance(new_col, Column)
-        self.assertIsInstance(new_col, ColumnView)
-        self.assertEqual(len(new_col), 10)
-        new_col.min()
-        new_col.mode()
+
+        n_temp_views = len(self.db.temp_views)
+        query = f'SELECT _rowid_ AS _rowid_, {self.column.name} FROM {self.column.table} LIMIT 10'
+        out = self.column._create_and_get_temp_view(view_name=name, query=query)
+        col = self.column
+        self.assertGreater(len(self.db.temp_views), n_temp_views)
+
+        self.assertIsInstance(out, ColumnView)
+        self.assertEqual(len(out), 10)
+        self.assertEqual(next(iter(out)), next(iter(col)))
+        self.assertEqual(out.iloc[0], col.iloc[0])
+        self.assertEqual(out.iloc[9], col.iloc[9])
 
     def test_getitem(self):
         """
@@ -425,15 +426,10 @@ class TestColumn(unittest.TestCase):
         )
         df = self.db.forest_area
         name = 'Aruba'
-        filtered_table = df[df.country_name == name]
         filtered_col = df.country_name[df.country_name == name]
 
-        self.assertTrue(filtered_table.shape[1] == df.shape[1] == len(df.columns))
-        self.assertEqual(len(filtered_table), len(filtered_col))
-
-        for a, b in zip(filtered_table.country_name, filtered_col):
-            self.assertEqual(a, b)
-            self.assertEqual(a, name)
+        self.assertTrue(len(filtered_col) < len(df))
+        self.assertTrue(set(filtered_col).issubset(df.country_name))
 
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)

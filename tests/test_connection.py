@@ -76,7 +76,6 @@ class TestConnection(unittest.TestCase):
     def test_views(self):
         out = self.db.views
         self.assertIsInstance(out, list)
-        self.assertIsInstance(next(iter(out)), str)
 
         tables = set(self.db.tables)
         views = set(self.db.views)
