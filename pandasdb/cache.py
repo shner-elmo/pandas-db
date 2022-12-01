@@ -107,7 +107,7 @@ class Cache(CacheDict):
             getattr(col, 'len')
 
             col.count(),
-            col.na_count(),
+            col.null_count(),
             col.min(),
             col.max(),
             col.describe(),

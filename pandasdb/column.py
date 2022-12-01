@@ -165,7 +165,7 @@ class Column:
         """
         return self._cache.execute(f'SELECT COUNT({self.name}) FROM {self.table}')[0][0]
 
-    def na_count(self) -> int:  # TODO rename to null_count
+    def null_count(self) -> int:  # TODO rename to null_count
         """
         Get the amount of None values in column
         """
@@ -217,7 +217,7 @@ class Column:
         if not self.data_is_numeric():
             raise TypeError(f'Cannot get median for Column of type {self.type}')
 
-        if self.na_count() == 0:
+        if self.null_count() == 0:
             col = self.sort_values()
         else:
             col = self.not_null().sort_values()

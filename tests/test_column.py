@@ -60,20 +60,20 @@ class TestColumn(unittest.TestCase):
                 n_rows = len(cursor.execute(self.table.query).fetchall())
 
             self.assertEqual(n_rows, length)
-            self.assertEqual(col.len, col.count() + col.na_count())
+            self.assertEqual(col.len, col.count() + col.null_count())
 
     def test_count(self):
         for name, col in self.table.items():
             out = col.count()
             self.assertIsInstance(out, int)
             self.assertGreater(out, 0)
-            self.assertEqual(col.count() + col.na_count(), col.len)
+            self.assertEqual(col.count() + col.null_count(), col.len)
 
     def test_na_count(self):
         for name, col in self.table.items():
-            out = col.na_count()
+            out = col.null_count()
             self.assertIsInstance(out, int)
-            self.assertEqual(col.na_count() + col.count(), col.len)
+            self.assertEqual(col.null_count() + col.count(), col.len)
 
             c = 0
             for x in col:
@@ -343,7 +343,7 @@ class TestColumn(unittest.TestCase):
     def test_not_null(self):
         for _, table in self.db.items():
             for _, col in table.items():
-                null_count = col.na_count()
+                null_count = col.null_count()
                 if null_count == 0:
                     self.assertEqual(len(col), len(col.not_null()))
                     self.assertFalse(any(x is None for x in col))
