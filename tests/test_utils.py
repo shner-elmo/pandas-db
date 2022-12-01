@@ -130,6 +130,9 @@ class TestUtils(unittest.TestCase):
     def test_get_mb_size(self):
         pass
 
+    def test_get_gb_size(self):
+        pass
+
     def test_rename_duplicate_cols(self):
         cols = ['a', 'b', 'c']
         out = rename_duplicate_cols(cols)

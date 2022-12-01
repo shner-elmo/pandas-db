@@ -21,6 +21,7 @@ __all__ = [
     'create_temp_view',
     'concat',
     'get_mb_size',
+    'get_gb_size',
     'rename_duplicate_cols',
     'convert_db_to_sql',
     'convert_csvs_to_db',
@@ -159,6 +160,17 @@ def get_mb_size(*obj) -> float:
     """
     bytes_size = asizeof.asizeof(*obj)
     return bytes_size / 1e+6
+
+
+def get_gb_size(*obj) -> float:
+    """
+    A helper for getting the number of Gigabytes an object/s is taking in memory
+
+    :param obj: args, any object/s
+    :return: float
+    """
+    bytes_size = asizeof.asizeof(*obj)
+    return bytes_size / 1e+9
 
 
 def rename_duplicate_cols(columns: list) -> list:
