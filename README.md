@@ -575,7 +575,7 @@ so whenever you do `db.table.col.median()` it will calculate the median
 and cache the result for next time, this is done for almost all `Table` and `Column` 
 properties (where the output is always the same or not very large).
 
-* `populate_cache` (True/False, default True)
+* `populate_cache` (True/False, default False)
 
 If the parameter is set to True it will loop through all the tables and columns 
 in the database and populate the cache, so whenever you do `table.shape` or 
