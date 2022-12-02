@@ -19,7 +19,7 @@ MIN_TABLES = 1
 
 class TestConnection(unittest.TestCase):
     def setUp(self):
-        self.db = Database(MAIN_Database, block_till_ready=True)
+        self.db = Database(MAIN_Database, cache=True, populate_cache=True)
 
         tables = self.db.tables
         self.assertGreaterEqual(len(tables), MIN_TABLES,
@@ -34,31 +34,31 @@ class TestConnection(unittest.TestCase):
         self.assertRaisesRegex(
             FileTypeError,
             f'File extension must be one of the following: {", ".join(valid_extension)}',
-            Database, db_path='my_db.txt', block_till_ready=True
+            Database, db_path='my_db.txt'
         )
         self.assertRaisesRegex(
             FileTypeError,
             f'File extension must be one of the following: {", ".join(valid_extension)}',
-            Database, db_path='my_db.csv', block_till_ready=True
+            Database, db_path='my_db.csv'
         )
 
         # test file type sql:
-        db = Database(SQL_FILE, block_till_ready=True)
+        db = Database(SQL_FILE)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
 
         # run same test again after creating/caching .db file
-        db = Database(SQL_FILE, block_till_ready=True)
+        db = Database(SQL_FILE)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
 
         # test file type db:
-        db = Database(DB_FILE, block_till_ready=True)
+        db = Database(DB_FILE)
         self.assertListEqual(db.tables, ['forest_area', 'land_area', 'regions'])
         db.exit()
 
         # test file type sqlite:
-        db = Database(SQLITE_FILE, block_till_ready=True)
+        db = Database(SQLITE_FILE)
         self.assertListEqual(db.tables, ['Answer', 'Question', 'Survey'])
         db.exit()
 
@@ -136,7 +136,7 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(df.columns.to_list(), renamed_cols)
 
     def test_context_manager(self):
-        with Database(MAIN_Database, block_till_ready=True) as data_base:
+        with Database(MAIN_Database) as data_base:
             table = data_base.tables[0]
             self.assertIsInstance(data_base, Database)
 
@@ -147,7 +147,7 @@ class TestConnection(unittest.TestCase):
         )
 
     def test_exit(self):
-        db = Database(MAIN_Database, block_till_ready=True)
+        db = Database(MAIN_Database)
         table = db.tables[0]
         db.exit()
 

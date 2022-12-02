@@ -4,6 +4,8 @@ from typing import Any
 
 from pandasdb.utils import *
 from pandasdb.exceptions import ViewAlreadyExists
+from pandasdb.connection import Database
+from pandasdb.column import Column
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
@@ -17,6 +19,22 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(convert_type_to_sql(42.43), '42.43')
         self.assertEqual(convert_type_to_sql(True), 'true')
         self.assertEqual(convert_type_to_sql(False), 'false')
+
+    def test_col_iterator(self):
+        db = Database(DB_FILE)
+
+        for col in col_iterator(db=db, numeric_only=False):
+            self.assertIsInstance(col, Column)
+
+        for col in col_iterator(db=db, numeric_only=True):
+            self.assertIsInstance(col, Column)
+            self.assertTrue(col.data_is_numeric())
+
+        all_cols = list(col_iterator(db=db, numeric_only=False))
+        numeric_cols = list(col_iterator(db=db, numeric_only=True))
+        self.assertNotEqual(len(all_cols), len(numeric_cols))
+        self.assertLess(len(numeric_cols), len(all_cols))
+        db.exit()
 
     def test_sql_tuple(self):
         out = sql_tuple(('jake', 32.2, True, 'new york'))

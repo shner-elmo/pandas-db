@@ -1,6 +1,5 @@
 import unittest
 import sqlite3
-import time
 
 from pandasdb import Database
 from pandasdb.cache import Cache, CacheDict
@@ -60,10 +59,10 @@ class TestCache(unittest.TestCase):
     def setUp(self) -> None:
         self.conn = sqlite3.connect(DB_FILE)
 
-        db = Database(DB_FILE, cache=True, populate_cache=True, block_till_ready=True)
-        table = db.tables[0]
-        column = db[table].columns[0]
-        self.table = db[table]
+        self.db = Database(DB_FILE)
+        table = self.db.tables[0]
+        column = self.db[table].columns[0]
+        self.table = self.db[table]
         self.queries = [
             f'SELECT MIN({column}) FROM {table}',
             f'SELECT MAX({column}) FROM {table}',
@@ -73,6 +72,7 @@ class TestCache(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.conn.close()
+        self.db.exit()
 
     def test_init(self):
         cache = Cache(conn=self.conn, cache_output=False)
@@ -86,16 +86,13 @@ class TestCache(unittest.TestCase):
         self.assertIsInstance(out, bool)
         self.assertIs(out, False)
 
-        db = Database(DB_FILE, block_till_ready=False)
-        self.assertIs(db.cache.is_ready, False)
+        db = Database(DB_FILE, cache=True, populate_cache=False)
+        self.assertFalse(db.cache.is_ready)
+        db.exit()
 
-        for _ in range(100):  # wait for cache dict to populate...  # TODO make dynamic ?
-            if db.cache.is_ready:
-                db.exit()
-                break
-            time.sleep(0.05)
-        else:
-            raise AssertionError(f'Cache not ready, {db.cache.is_ready}')
+        db = Database(DB_FILE, cache=True, populate_cache=True)
+        self.assertTrue(db.cache.is_ready)
+        db.exit()
 
     def test_execute(self):
         cache = Cache(conn=self.conn, cache_output=False)
@@ -179,7 +176,7 @@ class TestCache(unittest.TestCase):
             'SELECT MIN({column}) FROM {table}',
             'SELECT MAX({column}) FROM {table}',
         ]
-        self.assertTrue(not db.cache.is_ready)
+        self.assertFalse(db.cache.is_ready)
 
         for table_name, table in db.items():
             for key in table_keys:

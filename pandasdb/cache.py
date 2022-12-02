@@ -67,7 +67,7 @@ class Cache(CacheDict):
         tables = [x[0] for x in self.execute("SELECT name FROM sqlite_master WHERE type='table'")]
         return self._ready_count == len(tables)
 
-    def execute(self, query: str) -> list:
+    def execute(self, query: str) -> list[tuple]:
         """
         Execute an SQL query and save the result in cache for next time
 

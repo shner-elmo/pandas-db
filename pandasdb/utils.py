@@ -8,11 +8,16 @@ import itertools
 import random
 import string
 from pathlib import Path
-from typing import Generator, Iterable, Any, TypeVar
+from typing import Generator, Iterable, Any, TypeVar, TYPE_CHECKING
 
 from .exceptions import ViewAlreadyExists
 
+if TYPE_CHECKING:
+    from .connection import Database
+    from .column import Column
+
 __all__ = [
+    'col_iterator',
     'sort_iterable_with_none_values',
     'convert_type_to_sql',
     'sql_tuple',
@@ -32,6 +37,17 @@ __all__ = [
 PrimitiveTypes = str | int | float | bool | None
 T = TypeVar("T")
 TypeAny = TypeVar('TypeAny', bound=Any)
+
+
+def col_iterator(db: Database, *, numeric_only: bool) -> Generator[Column, None, None]:
+    """ Generator that yields all the columns (objects) from all tables """
+    for _, table in db.items():
+        for _, col in table.items():
+            if numeric_only:
+                if col.data_is_numeric():
+                    yield col
+            else:
+                yield col
 
 
 def sort_iterable_with_none_values(it: Iterable) -> list:

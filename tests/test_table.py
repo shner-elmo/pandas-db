@@ -21,7 +21,7 @@ MIN_COLUMNS = 3  # for the first table
 
 class TestTable(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = Database(MAIN_DATABASE, cache=False)
+        self.db = Database(MAIN_DATABASE)
         self.table: Table = self.db[self.db.tables[0]]
 
         tables = self.db.tables

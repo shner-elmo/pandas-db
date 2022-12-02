@@ -20,8 +20,8 @@ class Database:
     and the columns will be stored as attributes in they're respective tables
     You can have a look at the README here: https://github.com/shner-elmo/pandas-db/blob/master/README.md
     """
-    def __init__(self, db_path: str, cache: bool = True, populate_cache: bool = True, max_item_size: int = 2,
-                 max_dict_size: int = 100, block_till_ready: bool = False) -> None:
+    def __init__(self, db_path: str, cache: bool = True, populate_cache: bool = False,
+                 max_item_size: int = 2, max_dict_size: int = 100) -> None:
         """
         Initialize the Database object
 
@@ -39,23 +39,18 @@ class Database:
         populate_cache: if True it will call the methods for each column in each table in the database,
         when its initialized, this way when the user calls the method it will already be present in cache
         and ready to use.
+        note that this can take some time for very large databases.
 
         max_item_size: the max size in Megabytes an item can take in cache (sql_query + query_output)
 
         max_dict_size: the max size of the whole cache-dictionary, if the dictionary reaches its max size,
         no item will be added.
 
-        block_till_ready: by default the Database will populate the cache in the background,
-        so after the initialization the user can use the Database and in the background the cache will start
-        getting filled, you can set this to False which will stop the user from executing any code until the
-        cache is full.
-
         :param db_path: str, path to database
         :param cache: bool, default True
         :param populate_cache: bool, default True
         :param max_item_size: int, size in MB
         :param max_dict_size: int, size in MB
-        :param block_till_ready: bool, default False
         """
         path = Path(db_path)
         self.db_path = db_path
@@ -102,9 +97,8 @@ class Database:
                 thread.start()
                 threads.append(thread)
 
-            if block_till_ready:
-                for thread in threads:
-                    thread.join()
+            for thread in threads:
+                thread.join()
 
     @property
     def tables(self) -> list[str]:

@@ -8,25 +8,9 @@ from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.column import Column, ColumnView
 from pandasdb.expression import Expression
-from pandasdb.utils import sort_iterable_with_none_values, get_random_name, convert_type_to_sql
-
+from pandasdb.utils import sort_iterable_with_none_values, get_random_name, convert_type_to_sql, col_iterator
 
 DB_FILE = '../data/forestation.db'
-
-MIN_TABLES = 1
-MIN_COLUMNS = 3  # for the first table
-
-
-# TODO replace all nested for loops with this
-def col_iterator(db: Database, *, numeric_only: bool) -> Generator[Column, None, None]:
-    """ Generator that yields all the columns (objects) from all tables """
-    for _, table in db.items():
-        for _, col in table.items():
-            if numeric_only:
-                if col.data_is_numeric():
-                    yield col
-            else:
-                yield col
 
 
 class TestColumn(unittest.TestCase):
@@ -470,7 +454,7 @@ class TestColumnLogicalOp(unittest.TestCase):
     Test logical operators for Column objects (db.table.col >= 20, db.table.col.between(10, 25))
     """
     def setUp(self) -> None:
-        self.db = Database(DB_FILE, block_till_ready=True)
+        self.db = Database(DB_FILE, cache=True)
         self.table: Table = self.db[self.db.tables[0]]
         self.column: Column = getattr(self.table, self.table.columns[0])
 
