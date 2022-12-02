@@ -14,9 +14,6 @@ from .exceptions import FileTypeError, InvalidTableError, ConnectionClosedWarnin
 from .cache import Cache
 
 
-# TODO replace: 'int | float' -> Union[int, float]; 'x: str = None -> 'x: 'Optional[str] = None'
-# TODO add section in README about cache
-# TODO Cache properties in TableView/ColumnView ? if so, then move populate_cache() to its respective class
 class Database:
     """
     A class that represents a database, all the tables will be stored as attributes in the Database object,

@@ -251,7 +251,26 @@ class Table:
 
     def filter(self, expression: Expression) -> TableView:
         """
-        # TODO complete docstring
+        Filter and return a table
+
+        The way this works is you have to pass an expression, which you could either type manually:
+        `from pandasdb import Expression`
+        `df = db.table`
+        `df.filter(Expression('col BETWEEN 3.2 AND 7.8', table_name))`
+
+        Or by performing a logical operation with a column (just like in Pandas and Numpy)
+        `df = db.table`
+        `df.filter((df.col > 3.2) & (df.col < 7.8))`
+        Or with `Column.between()`:
+        `df.filter(df.col.between(3.2, 7.8))`
+
+        And there is a shortcut for .filter() using square brackets:
+        `df[df.col.between(3.2, 7.8)]`
+
+        - How it works:
+        Whenever you pass an expression, i.e.: `df.col == 'Jack'` a SQL query will be generated with the following:
+        `SELECT * FROM table WHERE col == 'Jack'` and it will create an SQL-view to store the filtered data,
+        the view itself can be filtered again and again.
 
         :param expression: Expression
         :return: TableView
@@ -373,7 +392,6 @@ class Table:
     def __getitem__(self, item: Expression) -> TableView:
         ...
 
-    # TODO: add option for list of columns and return new Table object with selected columns
     # @overload
     # def __getitem__(self, item: list[str]) -> TableView:
     #     ...
