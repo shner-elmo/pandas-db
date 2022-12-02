@@ -6,9 +6,9 @@ class TestReadme(unittest.TestCase):
     The following will test the code blocks in the README file,
     It will run each line and make sure it doesn't raise any errors
     """
+    # TODO replace test
     def test_code_blocks(self):
         return
-        # TODO update readme.md
         with open('../README.md', 'r') as f:
             lines = f.readlines()
 

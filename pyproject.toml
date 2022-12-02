@@ -1,13 +1,17 @@
+[tool.poetry]
+name = "pandasdb"
+version = "0.1.0"
+description = ""
+authors = ["shner-elmo <770elmo@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "^1.5.2"
+mypy = "^0.991"
+pympler = "^1.0.1"
+
+
 [build-system]
-requires = [
-    "setuptools>=54",
-    "wheel"
-]
-build-backend = "setuptools.build_meta"
-
-# PY-Version >= 3.10
-# TODO add dependencies
-
-https://github.com/nedbat/pkgsample/blob/main/pyproject.toml
-https://github.com/pandas-dev/pandas/blob/main/pyproject.toml
-https://peps.python.org/pep-0633/
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

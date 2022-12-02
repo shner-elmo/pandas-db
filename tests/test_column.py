@@ -8,13 +8,25 @@ from pandasdb import Database
 from pandasdb.table import Table
 from pandasdb.column import Column, ColumnView
 from pandasdb.expression import Expression
-from pandasdb.utils import sort_iterable_with_none_values, get_random_name
+from pandasdb.utils import sort_iterable_with_none_values, get_random_name, convert_type_to_sql
 
 
 DB_FILE = '../data/forestation.db'
 
 MIN_TABLES = 1
 MIN_COLUMNS = 3  # for the first table
+
+
+# TODO replace all nested for loops with this
+def col_iterator(db: Database, *, numeric_only: bool) -> Generator[Column, None, None]:
+    """ Generator that yields all the columns (objects) from all tables """
+    for _, table in db.items():
+        for _, col in table.items():
+            if numeric_only:
+                if col.data_is_numeric():
+                    yield col
+            else:
+                yield col
 
 
 class TestColumn(unittest.TestCase):
@@ -465,11 +477,6 @@ class TestColumnLogicalOp(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.exit()
 
-    def test_gt(self):
-        exp = self.column > 12.32
-        self.assertIsInstance(exp, Expression)
-        self.assertEqual(exp.query, f'{self.column.name} > 12.32')
-
     def test_add(self):
         df = self.db.forest_area
         new_col = df.year + df.year
@@ -554,32 +561,97 @@ class TestColumnLogicalOp(unittest.TestCase):
                 self.assertEqual(a // 0.75, b)
 
     # TODO: finish Expression tests
+    def test_gt(self):
+        for col in col_iterator(self.db, numeric_only=True):
+            median = col.median()
+            exp = col > median
+            filtered_col = col[exp]
+            n_filtered_col = len(filtered_col)
+
+            self.assertIsInstance(exp, Expression)
+            self.assertEqual(exp.query, f'{col.name} > {median}')
+            self.assertLess(n_filtered_col, len(col))
+            self.assertTrue(all(val > median for val in filtered_col))
+
     def test_ge(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=True):
+            median = col.median()
+            exp = col >= median
+            filtered_col = col[exp]
+            n_filtered_col = len(filtered_col)
+
+            self.assertIsInstance(exp, Expression)
+            self.assertEqual(exp.query, f'{col.name} >= {median}')
+            self.assertLess(n_filtered_col, len(col))
+            self.assertTrue(all(val >= median for val in filtered_col))
 
     def test_lt(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=True):
+            median = col.median()
+            exp = col < median
+            filtered_col = col[exp]
+            n_filtered_col = len(filtered_col)
+
+            self.assertIsInstance(exp, Expression)
+            self.assertEqual(exp.query, f'{col.name} < {median}')
+            self.assertLess(n_filtered_col, len(col))
+            self.assertTrue(all(val < median for val in filtered_col))
 
     def test_le(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=True):
+            median = col.median()
+            exp = col <= median
+            filtered_col = col[exp]
+            n_filtered_col = len(filtered_col)
+
+            self.assertIsInstance(exp, Expression)
+            self.assertEqual(exp.query, f'{col.name} <= {median}')
+            self.assertLess(n_filtered_col, len(col))
+            self.assertTrue(all(val <= median for val in filtered_col))
 
     def test_eq(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=False):
+            mode = next(iter(col.mode().keys()))
+            exp = col == mode
+            filt_col = col[exp]
+
+            self.assertIsInstance(exp, Expression)
+            if mode is None:
+                self.assertEqual(exp.query, f'{col.name} IS NULL')
+                self.assertTrue(all(x is None for x in filt_col))
+            else:
+                self.assertEqual(exp.query, f'{col.name} = {convert_type_to_sql(mode)}')
+                self.assertTrue(all(x == mode for x in filt_col))
 
     def test_ne(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=False):
+            mode = next(iter(col.mode().keys()))
+            exp = col != mode
+            filt_col = col[exp]
+
+            self.assertIsInstance(exp, Expression)
+            if mode is None:
+                self.assertEqual(exp.query, f'{col.name} IS NOT NULL')
+                self.assertTrue(all(x is not None for x in filt_col))
+            else:
+                self.assertEqual(exp.query, f'{col.name} != {convert_type_to_sql(mode)}')
+                self.assertTrue(all(x != mode for x in filt_col))
 
     def test_isin(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=False):
+            pass
 
     def test_between(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=True):
+            pass
 
     def test_like(self):
-        pass
+        for col in col_iterator(self.db, numeric_only=False):
+            pass
 
-    def test_ilike(self):
-        pass
+    # SQLite3 doesn't support it yet
+    # def test_ilike(self):
+    #     pass
 
 
 if __name__ == '__main__':

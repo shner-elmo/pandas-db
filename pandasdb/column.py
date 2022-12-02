@@ -165,7 +165,7 @@ class Column:
         """
         return self._cache.execute(f'SELECT COUNT({self.name}) FROM {self.table}')[0][0]
 
-    def null_count(self) -> int:  # TODO rename to null_count
+    def null_count(self) -> int:
         """
         Get the amount of None values in column
         """
