@@ -560,10 +560,45 @@ for row in sorted_df:
 (4311, 1001, '2016-03-02 15:40:29', 498, 605, 204, 1307, 2485.02, 4531.45, 1656.48, 8672.95)
 ...
 ```
-
-
 ---
 
+## Cache
+
+When initializing the `Database()` object there are a few parameters which will 
+determine how the output is cached (if it is at all).
+
+
+* `cache` (True/False, default True)
+
+By default, all the SQL queries are cached, 
+so whenever you do `db.table.col.median()` it will calculate the median
+and cache the result for next time, this is done for almost all `Table` and `Column` 
+properties (where the output is always the same or not very large).
+
+* `populate_cache` (True/False, default True)
+
+If the parameter is set to True it will loop through all the tables and columns 
+in the database and populate the cache, so whenever you do `table.shape` or 
+`col.avg()` the result will already be there.
+Note that populating the cache can take quite some time for larger databases.
+
+* `max_item_size`(int, default 2), and `max_dict_size` (int, default 100)
+
+The two parameters determine the maximum size in Megabytes for the element to be cached.
+For example: if the output of `col.value_counts()` was 2.1MB and max_item_size is set to 2MB,
+then the output would not be cached since it goes over the limit.
+
+And if the output was 1.9MB and the current cache size was 99MB then it would not
+cache the output of the function because otherwise the whole cache-dict size would
+be above 100MB.
+
+[//]: # (One caveat is that when the output of the query is very large, for example:)
+
+[//]: # (if you do `db.table.col.value_counts&#40;&#41;` and the column values are unique, then)
+
+[//]: # (`len&#40;output&#41;` will be equal to `len&#40;col&#41;`)
+
+---
 And finally, you can pass an SQL query to `db.query()` which will return a Pandas `DataFrame` with the results:
 ```python
 query = """
