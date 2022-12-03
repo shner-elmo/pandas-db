@@ -173,7 +173,3 @@ class TestUtils(unittest.TestCase):
 
     def test_load_sql_to_sqlite(self):
         pass
-
-
-if __name__ == '__main__':
-    unittest.main()

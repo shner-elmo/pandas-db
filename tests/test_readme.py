@@ -33,7 +33,3 @@ class TestReadme(unittest.TestCase):
         code = ''.join(code)
         print(code)
         exec(code)
-
-
-if __name__ == '__main__':
-    unittest.main()

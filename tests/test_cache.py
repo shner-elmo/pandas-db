@@ -195,7 +195,3 @@ class TestCache(unittest.TestCase):
                     self.assertIn(member=key, container=db.cache)
 
         self.assertTrue(db.cache.is_ready)
-
-
-if __name__ == '__main__':
-    unittest.main()

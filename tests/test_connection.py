@@ -223,7 +223,3 @@ class TestConnection(unittest.TestCase):
         self.assertIsInstance(repr(self.db), str)
         self.assertIsInstance(str(self.db), str)
         self.assertEqual(repr(self.db), str(self.db))
-
-
-if __name__ == '__main__':
-    unittest.main()

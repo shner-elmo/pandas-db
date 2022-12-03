@@ -35,7 +35,3 @@ class TestExpression(unittest.TestCase):
     def test_repr(self):
         a = Expression(query='name == "jake"', table='accounts')
         eval(repr(a))
-
-
-if __name__ == '__main__':
-    unittest.main()

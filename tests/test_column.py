@@ -636,7 +636,3 @@ class TestColumnLogicalOp(unittest.TestCase):
     # SQLite3 doesn't support it yet
     # def test_ilike(self):
     #     pass
-
-
-if __name__ == '__main__':
-    unittest.main()

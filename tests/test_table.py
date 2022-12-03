@@ -435,7 +435,3 @@ class TestTableView(unittest.TestCase):
         self.assertNotIn(member='_rowid_', container=nested_view.columns)
         self.assertNotIn(member='rowid', container=nested_view.columns)
         self.assertEqual(nested_view.columns, table.columns)
-
-
-if __name__ == '__main__':
-    unittest.main()
