@@ -54,6 +54,12 @@ class TestCacheDict(unittest.TestCase):
         str_repr = str(self.cache)
         self.assertIn(member=str(size), container=str_repr)
 
+    def test_repr(self):
+        for i in range(12):
+            self.cache[str(i)] = [(i,)]
+
+        self.assertEqual(repr(self.cache), repr(dict(self.cache)))
+
 
 class TestCache(unittest.TestCase):
     def setUp(self) -> None:

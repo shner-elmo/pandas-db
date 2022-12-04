@@ -2,6 +2,7 @@ from pandas import Series, DataFrame
 import numpy as np
 
 import unittest
+import random
 from collections.abc import Generator
 
 from pandasdb import Database
@@ -24,19 +25,19 @@ class TestColumn(unittest.TestCase):
         self.db.exit()
 
     def test_type(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             out = col.type
             self.assertIsInstance(out, type)
             self.assertIn(out, (str, int, float))
 
     def test_sql_type(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             out = col.sql_type
             self.assertIsInstance(out, str)
             self.assertGreater(len(out), 0)
 
     def test_data_is_numeric(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             is_numeric = col.data_is_numeric()
             self.assertIsInstance(is_numeric, bool)
 
@@ -47,26 +48,26 @@ class TestColumn(unittest.TestCase):
                 self.assertIsInstance(first_val, str)
 
     def test_len(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             length = col.len
             self.assertIsInstance(length, int)
-            self.assertGreater(length, 0)
+            self.assertGreaterEqual(length, 0)
 
             with self.db.conn as cursor:
-                n_rows = len(cursor.execute(self.table.query).fetchall())
+                n_rows = len(cursor.execute(col.query).fetchall())
 
             self.assertEqual(n_rows, length)
             self.assertEqual(col.len, col.count() + col.null_count())
 
     def test_count(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             out = col.count()
             self.assertIsInstance(out, int)
             self.assertGreater(out, 0)
             self.assertEqual(col.count() + col.null_count(), col.len)
 
     def test_na_count(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             out = col.null_count()
             self.assertIsInstance(out, int)
             self.assertEqual(col.null_count() + col.count(), col.len)
@@ -78,19 +79,21 @@ class TestColumn(unittest.TestCase):
             self.assertEqual(c, out)
 
     def test_min(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             col_min = col.min()
-            ser_min = col.to_series().min()
+            ser = col.to_series()
+            ser_min = ser[ser.notnull()].min()  # filter None values as Pandas isn't able to compare between them
             self.assertEqual(ser_min, col_min)
 
     def test_max(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             col_max = col.max()
-            ser_max = col.to_series().max()
+            ser = col.to_series()
+            ser_max = ser[ser.notnull()].max()  # filter None values as Pandas isn't able to compare between them
             self.assertEqual(ser_max, col_max)
 
     def test_sum(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             if col.data_is_numeric():
                 col_sum = col.sum()
                 ser_sum = col.to_series().sum()
@@ -103,7 +106,7 @@ class TestColumn(unittest.TestCase):
                 )
 
     def test_avg(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             if col.data_is_numeric():
                 col_avg = col.avg()
                 ser_avg = col.to_series().mean()
@@ -116,22 +119,28 @@ class TestColumn(unittest.TestCase):
                 )
 
     def test_median(self):
-        # TODO add tests for columns with len of 4 and 5
-        for table in self.db.tables:
-            for name, col in self.db[table].items():
-                if col.data_is_numeric():
-                    col_median = col.median()
-                    ser_median = col.to_series().median()
-                    self.assertAlmostEqual(ser_median, col_median, places=4)
-                else:
-                    self.assertRaisesRegex(
-                        TypeError,
-                        f'Cannot get median for Column of type {col.type}',
-                        col.median
-                    )
+        for col in col_iterator(self.db):
+            if col.data_is_numeric():
+                col_median = col.median()
+                ser_median = col.to_series().median()
+                self.assertAlmostEqual(ser_median, col_median, places=4)
+                self.assertAlmostEqual(ser_median, col_median, places=4)
+
+                # test column slice of len() odd and even
+                even_col = col.limit(4)
+                self.assertAlmostEqual(even_col.median(), even_col.to_series().median(), places=4)
+
+                odd_col = col.limit(5)
+                self.assertAlmostEqual(odd_col.median(), odd_col.to_series().median(), places=4)
+            else:
+                self.assertRaisesRegex(
+                    TypeError,
+                    f'Cannot get median for Column of type {col.type}',
+                    col.median
+                )
 
     def test_mode(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             out = col.mode()
             self.assertIsInstance(out, dict)
             self.assertGreater(len(out), 0)
@@ -145,7 +154,7 @@ class TestColumn(unittest.TestCase):
                 self.assertEqual(list(ser_mode.values()), list(out.keys()))
 
     def test_describe(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             col_dict: dict[str, float] = col.describe()
             ser: Series = col.to_series()
 
@@ -153,8 +162,8 @@ class TestColumn(unittest.TestCase):
                 d = {
                     col_dict['len']: len(ser),
                     col_dict['count']: ser.count(),
-                    col_dict['min']: ser.min(),
-                    col_dict['max']: ser.max(),
+                    col_dict['min']: ser[ser.notnull()].min(),
+                    col_dict['max']: ser[ser.notnull()].max(),
                     col_dict['sum']: ser.sum(),
                     col_dict['avg']: ser.mean(),
                     col_dict['median']: ser.median()
@@ -163,8 +172,8 @@ class TestColumn(unittest.TestCase):
                 d = {
                     col_dict['len']: len(ser),
                     col_dict['count']: ser.count(),
-                    col_dict['min']: ser.min(),
-                    col_dict['max']: ser.max(),
+                    col_dict['min']: ser[ser.notnull()].min(),
+                    col_dict['max']: ser[ser.notnull()].max(),
                     col_dict['unique']: len(ser.unique())
                 }
 
@@ -175,19 +184,22 @@ class TestColumn(unittest.TestCase):
                 self.assertEqual(key, val)
 
     def test_unique(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             col_unique = col.unique()
             ser_unique = col.to_series().unique()
             self.assertEqual(len(col_unique), len(ser_unique))
 
             for x, y in zip(col_unique, ser_unique):
                 if x is None:
-                    self.assertTrue(np.isnan(y))
+                    if col.data_is_numeric():
+                        self.assertTrue(np.isnan(y))
+                    else:
+                        self.assertTrue(y is None)
                 else:
                     self.assertEqual(x, y)
 
     def test_value_counts(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
             col_vc = col.value_counts()
             ser_vc = col.to_series().value_counts().to_dict()
 
@@ -228,7 +240,7 @@ class TestColumn(unittest.TestCase):
         self.assertNotEqual(a, b)
 
     def test_apply(self):
-        for name, col in self.table.items():
+        for col in col_iterator(self.db):
 
             if col.type is int:
                 it = col.apply(lambda x: len(str(x)))
@@ -254,7 +266,7 @@ class TestColumn(unittest.TestCase):
 
                     decimals = str(cell2).split('.')[-1]
                     self.assertEqual(len(decimals), 1)
-                    
+
             elif col.type is str:
                 it = col.apply(lambda x: x.split()[-1])
                 for cell in it:
@@ -437,9 +449,18 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(hash(self.column), int)
 
     def test_repr_df(self):
-        df = self.table._repr_df()
+        df = self.column._repr_df()
         self.assertIsInstance(df, DataFrame)
         self.assertEqual(len(df), 20)
+
+        # test for Column with len() < 10
+        col = self.column.limit(8)
+        df = col._repr_df()
+        self.assertEqual(len(df), 8)
+
+        col = self.column.limit(11)
+        df = col._repr_df()
+        self.assertEqual(len(df), 11)
 
     def test_repr(self):
         self.assertIsInstance(repr(self.column), str)
@@ -544,7 +565,6 @@ class TestColumnLogicalOp(unittest.TestCase):
             if a is not None:
                 self.assertEqual(a // 0.75, b)
 
-    # TODO: finish Expression tests
     def test_gt(self):
         for col in col_iterator(self.db, numeric_only=True):
             median = col.median()
@@ -621,17 +641,33 @@ class TestColumnLogicalOp(unittest.TestCase):
                 self.assertEqual(exp.query, f'{col.name} != {convert_type_to_sql(mode)}')
                 self.assertTrue(all(x != mode for x in filt_col))
 
-    def test_isin(self):
-        for col in col_iterator(self.db, numeric_only=False):
-            pass
+    # escape strings before passing them to SQL
+    # def test_isin(self):
+    #     for col in col_iterator(self.db, numeric_only=False):
+    #         print(col.table, col.name)
+    #         options = col.not_null().sample(random.randint(0, 20))
+    #         print(options)
+    #         filtered_col = col[col.isin(options)]
+    #         options_set = set(options)
+    #         self.assertTrue(all(x in options_set for x in filtered_col))
 
     def test_between(self):
         for col in col_iterator(self.db, numeric_only=True):
-            pass
+            a, b = sorted(col.not_null().sample(2))  # get two random numbers from the column
+            filtered_col = col[col.between(a, b)]
+            self.assertTrue(all(a <= x <= b for x in filtered_col if x is not None))
 
     def test_like(self):
-        for col in col_iterator(self.db, numeric_only=False):
-            pass
+        col: Column = self.db.regions.country_name
+
+        filtered_lower = col[col.like('%ita%')]
+        self.assertTrue(all('ita' in x.lower() for x in filtered_lower))
+
+        filtered_upper = col[col.like('%ITA%')]
+        self.assertTrue(all('ita' in x.lower() for x in filtered_upper))
+
+        # assert `LIKE` is case-insensitive
+        self.assertEqual(list(filtered_lower), list(filtered_upper))
 
     # SQLite3 doesn't support it yet
     # def test_ilike(self):

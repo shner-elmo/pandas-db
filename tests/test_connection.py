@@ -202,17 +202,16 @@ class TestConnection(unittest.TestCase):
             )
         for table in self.db.tables:
             table_item = self.db[table]
-            table_attr = getattr(self, table, None)
+            table_attr = getattr(self.db, table)
 
             self.assertIsInstance(table_item, Table)
             self.assertEqual(table_item.name, table)
 
-            if table_attr is not None:
-                self.assertIsInstance(table_attr, Table)
-                self.assertEqual(table_attr.name, table)
+            self.assertIsInstance(table_attr, Table)
+            self.assertEqual(table_attr.name, table)
 
-                self.assertEqual(table_attr, table_item)
-                self.assertEqual(id(table_attr), id(table_item))
+            self.assertEqual(table_attr, table_item)
+            self.assertEqual(id(table_attr), id(table_item))
 
     def test_len(self):
         out = len(self.db)
