@@ -672,7 +672,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} > {other}', table=self.table)
+        return Expression(query=f'{self.name} > {convert_type_to_sql(other)}', table=self.table)
 
     def __ge__(self, other: Numeric) -> Expression:
         """
@@ -680,7 +680,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} >= {other}', table=self.table)
+        return Expression(query=f'{self.name} >= {convert_type_to_sql(other)}', table=self.table)
 
     def __lt__(self, other: Numeric) -> Expression:
         """
@@ -688,7 +688,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} < {other}', table=self.table)
+        return Expression(query=f'{self.name} < {convert_type_to_sql(other)}', table=self.table)
 
     def __le__(self, other: Numeric) -> Expression:
         """
@@ -696,7 +696,7 @@ class Column:
         :param other: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} <= {other}', table=self.table)
+        return Expression(query=f'{self.name} <= {convert_type_to_sql(other)}', table=self.table)
 
     def __eq__(self, other: ColumnValue) -> Expression:
         """
@@ -734,7 +734,8 @@ class Column:
         :param b: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} BETWEEN {a} AND {b}', table=self.table)
+        return Expression(query=f'{self.name} BETWEEN {convert_type_to_sql(a)} AND {convert_type_to_sql(b)}',
+                          table=self.table)
 
     def like(self, regex: str) -> Expression:
         """
@@ -742,7 +743,7 @@ class Column:
         :param regex: str
         :return: Expression
         """
-        return Expression(query=f"{self.name} LIKE '{regex}'", table=self.table)
+        return Expression(query=f'{self.name} LIKE {convert_type_to_sql(regex)}', table=self.table)
 
     # SQLite3 doesn't support ILIKE (LIKE is already case-insensitive)
     # def ilike(self, regex: str) -> Expression:

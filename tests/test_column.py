@@ -641,15 +641,12 @@ class TestColumnLogicalOp(unittest.TestCase):
                 self.assertEqual(exp.query, f'{col.name} != {convert_type_to_sql(mode)}')
                 self.assertTrue(all(x != mode for x in filt_col))
 
-    # escape strings before passing them to SQL
-    # def test_isin(self):
-    #     for col in col_iterator(self.db, numeric_only=False):
-    #         print(col.table, col.name)
-    #         options = col.not_null().sample(random.randint(0, 20))
-    #         print(options)
-    #         filtered_col = col[col.isin(options)]
-    #         options_set = set(options)
-    #         self.assertTrue(all(x in options_set for x in filtered_col))
+    def test_isin(self):
+        for col in col_iterator(self.db, numeric_only=False):
+            options = col.not_null().sample(random.randint(0, 20))
+            filtered_col = col[col.isin(options)]
+            options_set = set(options)
+            self.assertTrue(all(x in options_set for x in filtered_col))
 
     def test_between(self):
         for col in col_iterator(self.db, numeric_only=True):

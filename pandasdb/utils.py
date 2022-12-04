@@ -71,7 +71,7 @@ def convert_type_to_sql(x: str | int | float | bool) -> str:
     :return: str
     """
     if isinstance(x, str):
-        return f"'{x}'"
+        return repr(x)
     if isinstance(x, bool):  # above int because bool inherits from int
         return str(x).lower()
     if isinstance(x, (int, float)):
