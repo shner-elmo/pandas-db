@@ -414,7 +414,7 @@ class Column:
         :return: ColumnView
         """
         view_name = f'_col_sorted_{self.table}_{self.name}_{get_random_name(size=10)}_'
-        query = f"SELECT {ROWID}, {self.name} FROM {self.table} LIMIT {n}"
+        query = f"SELECT {ROWID}, {self.name} FROM {self.table} WHERE _rowid_ <= {n}"
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
     def filter(self, expression: Expression) -> ColumnView:
@@ -727,14 +727,14 @@ class Column:
         options = sql_tuple(options)
         return Expression(query=f'{self.name} IN {options}', table=self.table)
 
-    def between(self, x: Numeric, y: Numeric) -> Expression:
+    def between(self, a: Numeric, b: Numeric) -> Expression:
         """
 
-        :param x: float
-        :param y: float
+        :param a: float
+        :param b: float
         :return: Expression
         """
-        return Expression(query=f'{self.name} BETWEEN {x} AND {y}', table=self.table)
+        return Expression(query=f'{self.name} BETWEEN {a} AND {b}', table=self.table)
 
     def like(self, regex: str) -> Expression:
         """

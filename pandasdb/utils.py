@@ -39,7 +39,7 @@ T = TypeVar("T")
 TypeAny = TypeVar('TypeAny', bound=Any)
 
 
-def col_iterator(db: Database, *, numeric_only: bool) -> Generator[Column, None, None]:
+def col_iterator(db: Database, *, numeric_only: bool = False) -> Generator[Column, None, None]:
     """ Generator that yields all the columns (objects) from all tables """
     for _, table in db.items():
         for _, col in table.items():
