@@ -325,7 +325,7 @@ class Table:
         :return: TableView
         """
         view_name = f'_table_limit_{self.name}_{get_random_name(size=10)}_'
-        query = f'SELECT {ROWID}, {self._cols_as_str} FROM {self.name} LIMIT {n}'
+        query = f'SELECT {ROWID}, {self._cols_as_str} FROM {self.name} WHERE _rowid_ <= {n}'
         return self._create_and_get_temp_view(view_name=view_name, query=query)
 
     def _create_and_get_temp_view(self, view_name: str, query: str) -> TableView:
@@ -432,7 +432,7 @@ class Table:
         """
         Get a sample of the table data
         
-        This method is a helper for: __str__, __repr__, and _repr_html_.
+        This method is a helper for: __repr__(), and _repr_html_().
         It returns a sample of the table data, by default the first and last 5 rows,...
 
         note on top_rows and bottom_rows;
@@ -446,8 +446,8 @@ class Table:
         bottom_rows = 10
         n = len(self)
 
-        if top_rows > n:  # shortcut for small dataframes
-            return DataFrame(data=self.iloc[:], columns=self.columns)
+        if n <= top_rows:  # shortcut for small dataframes
+            return DataFrame(data=self, columns=self.columns)
 
         data = self.iloc[:top_rows] + self.iloc[-bottom_rows:]
         index = list(range(top_rows)) + list(range(n - bottom_rows, n))
@@ -465,7 +465,7 @@ class Table:
 
     def equals(self, other) -> bool:
         """
-        Check if all the rows are exactly the same
+        Check if the content of a given Table is the same
         """
         if not isinstance(other, Table):
             return False

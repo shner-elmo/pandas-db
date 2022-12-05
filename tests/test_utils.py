@@ -20,6 +20,13 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(convert_type_to_sql(True), 'true')
         self.assertEqual(convert_type_to_sql(False), 'false')
 
+        for x in (None, (1, 2, 3), [1, 2, 3]):
+            self.assertRaisesRegex(
+                TypeError,
+                f'param x must be of type str, int, float, or bool. not: {type(x)}',
+                convert_type_to_sql, x
+            )
+
     def test_col_iterator(self):
         db = Database(DB_FILE)
 
@@ -42,15 +49,6 @@ class TestUtils(unittest.TestCase):
 
         out = sql_tuple((False,))
         self.assertEqual(out, '(false)')
-
-    def test_sqlite_conn_open(self):
-        conn = sqlite3.connect(DB_FILE)
-        conn.cursor()  # if connection is closed it will raise an error when asked for a cursor
-        self.assertIs(sqlite_conn_open(conn), True)
-        conn.close()
-        self.assertIs(sqlite_conn_open(conn), False)
-
-        self.assertRaises(sqlite3.ProgrammingError, conn.cursor)
 
     def test_get_random_name(self):
         out = get_random_name(5)

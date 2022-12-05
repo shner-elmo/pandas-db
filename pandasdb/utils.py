@@ -21,7 +21,6 @@ __all__ = [
     'sort_iterable_with_none_values',
     'convert_type_to_sql',
     'sql_tuple',
-    'sqlite_conn_open',
     'get_random_name',
     'create_temp_view',
     'concat',
@@ -88,20 +87,6 @@ def sql_tuple(it: Iterable) -> str:
     :return: str
     """
     return f'({", ".join(convert_type_to_sql(x) for x in it)})'
-
-
-def sqlite_conn_open(conn: sqlite3.Connection) -> bool:
-    """
-    Return True if connection is open, else: False
-
-    :param conn: sqlite3.Connection
-    :return: bool
-    """
-    try:
-        conn.cursor()
-        return True
-    except sqlite3.ProgrammingError:
-        return False
 
 
 def get_random_name(size: int = 10) -> str:
@@ -212,7 +197,7 @@ def rename_duplicate_cols(columns: list) -> list:
     return new_cols
 
 
-def convert_db_to_sql(db_file: str, sql_file: str) -> None:
+def convert_db_to_sql(db_file: str | Path, sql_file: str | Path) -> None:
     """
     takes a .db file and converts it to .sql
 
@@ -226,9 +211,10 @@ def convert_db_to_sql(db_file: str, sql_file: str) -> None:
                 file.write(line)
 
 
-def convert_csvs_to_db(db_file: str, csv_files: list, set_lowercase: bool = True, **kwargs: Any) -> None:
+def convert_csvs_to_db(db_file: str | Path, csv_files: list[str] | list[Path], set_lowercase: bool = True,
+                       **kwargs: Any) -> None:
     """
-    convert a CSV list to a database (.db file)
+    convert a list of CSVs to a database (.db file)
 
     if the param set_lowercase is true, it will rename the table and column names to lowercase
     note that any column name that contains spaces or dashes will replace the characters with underscores,
@@ -253,7 +239,7 @@ def convert_csvs_to_db(db_file: str, csv_files: list, set_lowercase: bool = True
             df.to_sql(name=name, con=conn, index=False)
 
 
-def convert_sql_to_db(sql_file: str, db_file: str) -> None:
+def convert_sql_to_db(sql_file: str | Path, db_file: str | Path) -> None:
     """
     Convert .sql to .db file
 
@@ -266,7 +252,7 @@ def convert_sql_to_db(sql_file: str, db_file: str) -> None:
             conn.executescript(file.read())
 
 
-def load_sql_to_sqlite(sql_file: str) -> sqlite3.Connection:
+def load_sql_to_sqlite(sql_file: str | Path) -> sqlite3.Connection:
     """
     Create a Sqlite3 connection with a .sql file
 

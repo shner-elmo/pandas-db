@@ -8,7 +8,7 @@ from typing import Generator, Any
 from threading import Thread
 from pathlib import Path
 
-from .utils import convert_sql_to_db, rename_duplicate_cols, sqlite_conn_open
+from .utils import convert_sql_to_db, rename_duplicate_cols
 from .table import Table
 from .exceptions import FileTypeError, InvalidTableError, ConnectionClosedWarning
 from .cache import Cache
@@ -52,30 +52,28 @@ class Database:
         :param max_item_size: int, size in MB
         :param max_dict_size: int, size in MB
         """
-        path = Path(db_path)
-        self.db_path = db_path
-        self.name = path.name
-
-        extension = path.suffix
+        self.db_path = db_path  # save for repr()
+        db_path = Path(db_path)
+        self.name = db_path.name
+        extension = db_path.suffix.lower()
         valid_extension = ('.sql', '.db', '.sqlite', '.sqlite3')
 
         if extension not in valid_extension:
             raise FileTypeError(f'File extension must be one of the following: {", ".join(valid_extension)}')
 
         if extension == '.sql':  # if .sql load to .db file and then connect
-            current_file_parts = Path(__file__).parent.parent.parts
-            folder = Path(*current_file_parts, 'pandasdb-local-databases')
-            file = Path(*folder.parts, path.stem + '.db')
+            local_db_folder = Path(__file__).parent.parent / 'pandasdb-local-databases'
+            local_db_file = local_db_folder / f'{db_path.stem}.db'
 
-            if not folder.exists():
-                folder.mkdir()
+            if local_db_folder.exists():
+                for f in local_db_folder.iterdir():
+                    if f == local_db_file:
+                        f.unlink()  # delete file and create a new one to avoid using old data
+            else:
+                local_db_folder.mkdir()
 
-            files = [f.name for f in folder.iterdir()]
-            if file.name in files:
-                file.unlink()  # delete file and create a new one to update the data
-
-            convert_sql_to_db(sql_file=db_path, db_file=str(file))
-            self.conn = sqlite3.connect(str(file), check_same_thread=False)
+            convert_sql_to_db(sql_file=db_path, db_file=local_db_file)
+            self.conn = sqlite3.connect(local_db_file, check_same_thread=False)
         else:
             self.conn = sqlite3.connect(db_path, check_same_thread=False)
 
@@ -99,6 +97,17 @@ class Database:
 
             for thread in threads:
                 thread.join()
+
+    @property
+    def conn_open(self) -> bool:
+        """
+        Check if the SQL connection is open
+        """
+        try:
+            self.conn.cursor()
+            return True
+        except sqlite3.ProgrammingError:
+            return False
 
     @property
     def tables(self) -> list[str]:
@@ -204,7 +213,7 @@ class Database:
 
         :return: None
         """
-        if hasattr(self, 'conn') and sqlite_conn_open(self.conn):
+        if hasattr(self, 'conn') and self.conn_open:
             self.exit()
 
     def exit(self) -> None:
@@ -213,7 +222,7 @@ class Database:
 
         :return: None
         """
-        if sqlite_conn_open(self.conn):
+        if self.conn_open:
             self.conn.close()
         else:
             warnings.warn('Connection already closed!', ConnectionClosedWarning)

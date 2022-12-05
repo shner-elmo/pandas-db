@@ -2,24 +2,26 @@ from pandas import DataFrame
 
 import unittest
 import sqlite3
+import shutil
 from collections.abc import Generator
+from pathlib import Path
 
 from pandasdb import Database
 from pandasdb.table import Table
-from pandasdb.exceptions import FileTypeError, ConnectionClosedWarning
-from pandasdb.utils import create_temp_view
+from pandasdb.exceptions import FileTypeError, ConnectionClosedWarning, InvalidTableError
+from pandasdb.utils import create_temp_view, get_random_name
 
 DB_FILE = '../data/forestation.db'
 SQL_FILE = '../data/parch-and-posey.sql'
 SQLITE_FILE = '../data/mental_health.sqlite'
-MAIN_Database = DB_FILE
+MAIN_DATABASE = DB_FILE
 
 MIN_TABLES = 1
 
 
 class TestConnection(unittest.TestCase):
     def setUp(self):
-        self.db = Database(MAIN_Database, cache=True, populate_cache=True)
+        self.db = Database(MAIN_DATABASE, cache=True, populate_cache=True)
 
         tables = self.db.tables
         self.assertGreaterEqual(len(tables), MIN_TABLES,
@@ -43,6 +45,10 @@ class TestConnection(unittest.TestCase):
         )
 
         # test file type sql:
+        folder = Path(__file__).parent.parent / 'pandasdb-local-databases'  # folder to save converted databases
+        if folder.exists():
+            shutil.rmtree(folder)
+
         db = Database(SQL_FILE)
         self.assertListEqual(db.tables, ['web_events', 'sales_reps', 'region', 'orders', 'accounts'])
         db.exit()
@@ -61,6 +67,17 @@ class TestConnection(unittest.TestCase):
         db = Database(SQLITE_FILE)
         self.assertListEqual(db.tables, ['Answer', 'Question', 'Survey'])
         db.exit()
+
+    def test_conn_open(self):
+        db = Database(MAIN_DATABASE)
+
+        db.conn.cursor()  # if connection is closed it will raise an error when asked for a cursor
+        self.assertIs(db.conn_open, True)
+
+        db.conn.close()
+        self.assertIs(db.conn_open, False)
+
+        self.assertRaises(sqlite3.ProgrammingError, db.conn.cursor)
 
     def test_tables(self):
         out = self.db.tables
@@ -88,7 +105,7 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(len(out), 0)  # should be empty right after creating the SQL connection
 
     def test_temp_views(self):
-        db = Database(MAIN_Database, cache=False)
+        db = Database(MAIN_DATABASE, cache=False)
         out = db.temp_views
         self.assertIsInstance(out, list)
         self.assertEqual(len(out), 0)  # should be empty right after creating the SQL connection
@@ -103,9 +120,18 @@ class TestConnection(unittest.TestCase):
         self.assertNotIn(member=name, container=db.temp_views)
 
     def test_get_columns(self):
-        out = self.db.get_columns(self.db.tables[0])
-        self.assertIsInstance(out, list)
-        self.assertGreaterEqual(len(out), MIN_TABLES)
+        for table in self.db.tables:
+            out = self.db.get_columns(table)
+            self.assertIsInstance(out, list)
+            self.assertGreaterEqual(len(out), 1)
+            self.assertIsInstance(out[0], str)
+
+        non_existing_table = get_random_name(20)
+        self.assertRaisesRegex(
+            InvalidTableError,
+            f'No such table: {non_existing_table}',
+            self.db.get_columns, non_existing_table
+        )
 
     def test_items(self):
         out = self.db.items()
@@ -116,7 +142,7 @@ class TestConnection(unittest.TestCase):
             self.assertIsInstance(table_object, Table)
 
     def test_query(self):
-        self.assertEqual(MAIN_Database, '../data/forestation.db',
+        self.assertEqual(MAIN_DATABASE, '../data/forestation.db',
                          msg="This test works only on this specific Database (forestation.db)")
         query = """
         SELECT * FROM forest_area
@@ -136,7 +162,7 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(df.columns.to_list(), renamed_cols)
 
     def test_context_manager(self):
-        with Database(MAIN_Database) as data_base:
+        with Database(MAIN_DATABASE) as data_base:
             table = data_base.tables[0]
             self.assertIsInstance(data_base, Database)
 
@@ -147,7 +173,7 @@ class TestConnection(unittest.TestCase):
         )
 
     def test_exit(self):
-        db = Database(MAIN_Database)
+        db = Database(MAIN_DATABASE)
         table = db.tables[0]
         db.exit()
 
@@ -176,7 +202,7 @@ class TestConnection(unittest.TestCase):
         self.assertIn(member='conn', container=self.db._table_items)
         self.assertIsInstance(self.db.conn, sqlite3.Connection)  # make sure we don't overwrite pre-existing attributes
 
-    def test_get_table(self):
+    def test_getitem(self):
         """
         All the table objects are stored in self._table_items (structure: dict[str, Table])
         which is a dictionary, similarly to a Pandas Dataframe you can access the tables both
@@ -192,7 +218,6 @@ class TestConnection(unittest.TestCase):
 
         If a requested table isn't present in the Database, KeyError is raised
         """
-        # TODO: test tables added after __init__
         for table in self.db.tables:
             non_existent_table = f'{table} {0.32}'
             self.assertRaisesRegex(
@@ -200,6 +225,21 @@ class TestConnection(unittest.TestCase):
                 f'No such Table: {non_existent_table}, must be one of the following: {", ".join(self.db.tables)}',
                 self.db.__getitem__, non_existent_table
             )
+
+        # test table that was created after Database.__init__()
+        table_name = 'test_table'
+        with self.db.conn as cur:
+            cur.execute(f'CREATE TABLE {table_name} AS SELECT * FROM regions LIMIT 10')
+
+        out = self.db[table_name]
+        self.assertIsInstance(out, Table)
+        self.assertIn(table_name, container=self.db._table_items)
+        self.assertTrue(hasattr(self.db, table_name))
+
+        # drop table after test
+        with self.db.conn as cur:
+            cur.execute(f'DROP TABLE {table_name}')
+
         for table in self.db.tables:
             table_item = self.db[table]
             table_attr = getattr(self.db, table)

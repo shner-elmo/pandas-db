@@ -349,32 +349,34 @@ class TestColumn(unittest.TestCase):
         )
 
     def test_not_null(self):
-        for _, table in self.db.items():
-            for _, col in table.items():
-                null_count = col.null_count()
-                if null_count == 0:
-                    self.assertEqual(len(col), len(col.not_null()))
-                    self.assertFalse(any(x is None for x in col))
-                else:
-                    self.assertTrue(any(x is None for x in col))
-                    self.assertFalse(any(x is None for x in col.not_null()))
-                    self.assertEqual(len(col), len(col.not_null()) + null_count)
+        for col in col_iterator(self.db):
+            null_count = col.null_count()
+            if null_count == 0:
+                self.assertEqual(len(col), len(col.not_null()))
+                self.assertFalse(any(x is None for x in col))
+            else:
+                self.assertTrue(any(x is None for x in col))
+                self.assertFalse(any(x is None for x in col.not_null()))
+                self.assertEqual(len(col), len(col.not_null()) + null_count)
 
     def test_sort_values(self):
-        for _, table in self.db.items():
-            for _, col in table.items():
-                py_sorted_col = sort_iterable_with_none_values(col)
-                sql_sorted_col = list(col.sort_values())
-                self.assertEqual(len(py_sorted_col), len(sql_sorted_col))
-                self.assertEqual(py_sorted_col, sql_sorted_col)
+        for col in col_iterator(self.db):
+            py_sorted_col = sort_iterable_with_none_values(col)
+            sql_sorted_col = list(col.sort_values())
+            self.assertEqual(len(py_sorted_col), len(sql_sorted_col))
+            self.assertEqual(py_sorted_col, sql_sorted_col)
 
     def test_limit(self):
-        for i in (0, 1, 2, 5, 10, 50, 100):
-            out = self.column.limit(i)
-            self.assertEqual(len(out), i)
-            sliced_column: list = self.column.iloc[:i]
-            self.assertEqual(len(sliced_column), len(out))
-            self.assertEqual(sliced_column, list(out))
+        for col in col_iterator(self.db):
+            for i in (0, 1, 2, 5, 10, 50, 100):
+                out = col.limit(i)
+                self.assertEqual(len(out), i)
+
+                sliced_column: list = col.iloc[:i]
+                self.assertEqual(len(sliced_column), len(out))
+                self.assertEqual(sliced_column, list(out))
+
+                self.assertTrue(all(a == b for a, b in zip(out, sliced_column)))
 
     def test_filter(self):
         self.assertTrue(
@@ -439,6 +441,13 @@ class TestColumn(unittest.TestCase):
         self.assertTrue(len(filtered_col) < len(df))
         self.assertTrue(set(filtered_col).issubset(df.country_name))
 
+        for item in ('abc', None, (1, 2, 3)):
+            self.assertRaisesRegex(
+                TypeError,
+                f'Argument must be of type Expression, int, slice, or list. not: {type(item)}',
+                self.column.__getitem__, item
+            )
+
     def test_iter(self):
         self.assertIsInstance(iter(self.column), Generator)
 
@@ -449,18 +458,17 @@ class TestColumn(unittest.TestCase):
         self.assertIsInstance(hash(self.column), int)
 
     def test_repr_df(self):
-        df = self.column._repr_df()
-        self.assertIsInstance(df, DataFrame)
-        self.assertEqual(len(df), 20)
+        for col in col_iterator(self.db):
+            df = col._repr_df()
+            self.assertIsInstance(df, DataFrame)
+            self.assertEqual(len(df), 20)
 
-        # test for Column with len() < 10
-        col = self.column.limit(8)
-        df = col._repr_df()
-        self.assertEqual(len(df), 8)
+            # test Column with len() < 10
+            df = col.limit(8)._repr_df()
+            self.assertEqual(len(df), 8)
 
-        col = self.column.limit(11)
-        df = col._repr_df()
-        self.assertEqual(len(df), 11)
+            df = col.limit(11)._repr_df()
+            self.assertEqual(len(df), 20)
 
     def test_repr(self):
         self.assertIsInstance(repr(self.column), str)

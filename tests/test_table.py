@@ -280,6 +280,14 @@ class TestTable(unittest.TestCase):
         self.assertEqual(tbl.shape, out.shape)
         self.assertEqual(tbl.columns, out.columns)
 
+        types = [set(), tuple(), 3.32]
+        for t in types:
+            self.assertRaisesRegex(
+                TypeError,
+                f'column parameter must be str, list, or dict, not: {type(t)}',
+                tbl.sort_values, t
+            )
+
     def test_limit(self):
         table = self.table
         limit_table = self.table.limit(25)
@@ -379,10 +387,16 @@ class TestTable(unittest.TestCase):
         self.assertIsInstance(hash(self.table), int)
 
     def test_repr_df(self):
-        for name, table in self.db.items():
+        for _, table in self.db.items():
             df = table._repr_df()
-
             self.assertIsInstance(df, DataFrame)
+            self.assertEqual(len(df), 20)
+
+            df = table.limit(9)._repr_df()
+            self.assertEqual(len(df), 9)
+
+            df = table.limit(11)._repr_df()
+            self.assertEqual(len(df), 20)
 
     def test_repr(self):
         self.assertIsInstance(repr(self.table), str)
@@ -393,10 +407,12 @@ class TestTable(unittest.TestCase):
 
     def test_equals(self):
         db = self.db
+        self.assertFalse(db.forest_area.equals('abcd'))
         self.assertFalse(db.forest_area.equals(db.land_area))
         self.assertFalse(db.forest_area.equals(db.regions))
 
         self.assertTrue(db.forest_area.equals(db.forest_area))
+        self.assertTrue(db.forest_area.equals(db['forest_area']))
         self.assertTrue(db.regions.equals(db.regions.limit(10000)))
 
 

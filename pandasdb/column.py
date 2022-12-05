@@ -571,8 +571,8 @@ class Column:
         bottom_rows = 10
         n = len(self)
 
-        if top_rows > n:  # shortcut for small dataframes
-            return DataFrame(data=self.iloc[:], columns=[self.name])
+        if n <= top_rows:  # shortcut for small dataframes
+            return DataFrame(data=self, columns=[self.name])
 
         data = self.iloc[:top_rows] + self.iloc[-bottom_rows:]
         index = list(range(top_rows)) + list(range(n - bottom_rows, n))

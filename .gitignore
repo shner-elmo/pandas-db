@@ -9,4 +9,3 @@ pandasdb2.egg-info
 pandasdb-local-databases/
 htmlcov
 .coverage
-data/  # don't track any changes in the databases

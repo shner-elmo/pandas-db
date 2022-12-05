@@ -20,6 +20,20 @@ class Expression:
         self.query = query
         self.table = table
 
+    def _validate_other(self, other) -> None:
+        """
+        Validate other expression is valid (for __and__() and __or__())
+
+        :raise: ExpressionError if param: expression isn't an instance of Expression
+        :raise: ExpressionError if self.table != other.table
+        """
+        if not isinstance(other, Expression):
+            raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
+
+        if not self.table == other.table:
+            raise ExpressionError(
+                f'Cannot concatenate two expressions from different tables ({self.table} and {other.table})')
+
     def __and__(self, expression: Expression) -> Expression:
         """
         Return an Expression object with 'self.query' as: 'Expression1 AND Expression2'
@@ -29,13 +43,7 @@ class Expression:
         :raise: ExpressionError if param: expression isn't an instance of Expression
         :raise: ExpressionError if self.table != other.table
         """
-        if not isinstance(expression, Expression):
-            raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
-
-        if not self.table == expression.table:
-            raise ExpressionError(
-                f'Cannot concatenate two expressions from different tables ({self.table} and {expression.table})')
-
+        self._validate_other(other=expression)
         return Expression(query=f'{self.query} AND {expression.query}', table=self.table)
 
     def __or__(self, expression: Expression) -> Expression:
@@ -47,13 +55,7 @@ class Expression:
         :raise: ExpressionError if param: expression isn't an instance of Expression
         :raise: ExpressionError if self.table != other.table
         """
-        if not isinstance(expression, Expression):
-            raise ExpressionError('expression must be an instance of Expression, try using a column object instead')
-
-        if not self.table == expression.table:
-            raise ExpressionError(
-                f'Cannot concatenate two expressions from different tables ({self.table} and {expression.table})')
-
+        self._validate_other(other=expression)
         return Expression(query=f'{self.query} OR {expression.query}', table=self.table)
 
     def __str__(self) -> str:

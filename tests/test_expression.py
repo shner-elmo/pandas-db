@@ -1,9 +1,33 @@
 import unittest
 
 from pandasdb.expression import Expression
+from pandasdb.exceptions import ExpressionError
 
 
 class TestExpression(unittest.TestCase):
+    def test_init(self):
+        self.assertRaises(
+            TypeError,
+            Expression, query=['a', 'b', 'c'], table='region'
+        )
+
+    def test_validate_other(self):
+        a = Expression(query='price BETWEEN 3.23 AND 49.0', table='products')
+        b = 'id IN (3209, 2093, 1905)'
+        self.assertRaisesRegex(
+            ExpressionError,
+            'expression must be an instance of Expression, try using a column object instead',
+            lambda: a & b
+        )
+
+        a = Expression(query='price BETWEEN 3.23 AND 49.0', table='products')
+        b = Expression(query='id IN (3209, 2093, 1905)', table='students')
+        self.assertRaisesRegex(
+            ExpressionError,
+            'Cannot concatenate two expressions from different tables',
+            lambda: a & b
+        )
+
     def test_and(self):
         a = Expression(query='name == "jake"', table='accounts')
         b = Expression(query='age >= 24', table='accounts')
