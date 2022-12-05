@@ -760,6 +760,7 @@ class ColumnView(Column):
     A ColumnView is created everytime we filter an existing Column.
     (from Column.filter() or Column[<expression>]
     """
+    # noinspection PyMissingConstructor
     def __init__(self, conn: sqlite3.Connection, cache: Cache,
                  table_name: str, col_name: str, created_query: str = None) -> None:
         """

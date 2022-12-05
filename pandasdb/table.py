@@ -388,13 +388,13 @@ class Table:
     def __getitem__(self, item: str) -> Column:
         ...
 
+    # @overload
+    # def __getitem__(self, item: list[str]) -> TableView:  # [["list of column names"], "table containing columns"]
+    #     ...
+
     @overload
     def __getitem__(self, item: Expression) -> TableView:
         ...
-
-    # @overload
-    # def __getitem__(self, item: list[str]) -> TableView:
-    #     ...
 
     def __getitem__(self, item: str | Expression) -> Column | TableView:
         """
@@ -496,6 +496,7 @@ class TableView(Table):
     but when we do 'SELECT * FROM my_view' we want to filter out the '_rowid_' column,
     so instead we pass the columns' property which will automatically filter it out.
     """
+    # noinspection PyMissingConstructor
     def __init__(self, conn: sqlite3.Connection, cache: Cache, name: str, created_query: str = None) -> None:
         """
         Initialize the Table object
