@@ -1,6 +1,7 @@
 from pandas import DataFrame
 
 import unittest
+import random
 from collections.abc import Generator
 
 from pandasdb import Database
@@ -361,6 +362,20 @@ class TestTable(unittest.TestCase):
 
             self.assertEqual(id(col_obj), id(attr_col))
 
+    def test_column_slice(self):
+        for _ in range(3):
+            for _, table in self.db.items():
+                lst: list[str] = table.columns
+                out = table._column_slice(lst)
+                self.assertTrue(table.equals(out))
+
+                k = random.randint(1, len(table.columns) - 1)
+                rand_col_names = list(set(random.sample(table.columns, k=k)))
+                sliced_table = table[rand_col_names]
+
+                self.assertEqual(len(sliced_table), len(table))
+                self.assertEqual(len(sliced_table.columns), len(rand_col_names))
+
     def test_getitem(self):
         tbl = self.db.forest_area
         filtered_table = tbl[tbl.country_code == 'ITA']
@@ -369,6 +384,10 @@ class TestTable(unittest.TestCase):
         col_name = 'country_name'
         out = tbl[col_name]
         self.assertIsInstance(out, Column)
+
+        out = tbl[['country_name', 'year', 'country_code']]
+        self.assertIsInstance(out, TableView)
+        self.assertEqual(len(out.columns), 3)
 
         non_existent_column = get_random_name(10)
         self.assertRaises(

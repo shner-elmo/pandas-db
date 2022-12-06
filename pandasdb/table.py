@@ -384,23 +384,34 @@ class Table:
         if not hasattr(self, column):  # to avoid overwriting existing attributes and methods
             setattr(self, column, col_obj)
 
-    @overload
-    def __getitem__(self, item: str) -> Column:
-        ...
+    def _column_slice(self, columns: list[str]) -> TableView:
+        """
+        Return a TableView with the given columns
 
-    # @overload
-    # def __getitem__(self, item: list[str]) -> TableView:  # [["list of column names"], "table containing columns"]
-    #     ...
+        :param columns: list of column names
+        :return: TableView
+        """
+        view_name = f'_table_{self.name}_{get_random_name(size=10)}_'
+        query = f'SELECT {ROWID}, {", ".join(columns)} FROM {self.name}'
+        return self._create_and_get_temp_view(view_name=view_name, query=query)
 
     @overload
     def __getitem__(self, item: Expression) -> TableView:
         ...
 
-    def __getitem__(self, item: str | Expression) -> Column | TableView:
+    @overload
+    def __getitem__(self, item: str) -> Column:
+        ...
+
+    @overload
+    def __getitem__(self, item: list[str]) -> TableView:
+        ...
+
+    def __getitem__(self, item: Expression | str | list[str]) -> Column | TableView:
         """
         Get column object for given column name
 
-        :param item: str, Column | TableView
+        :param item: Expression, column-name, or list of columns
         :return: Column
         :raise: KeyError
         """
@@ -412,6 +423,9 @@ class Table:
                 return self._get_col(item)
             except InvalidColumnError:
                 raise KeyError(f'No such Column: {item}, must be one of the following: {self._cols_as_str}')
+
+        if isinstance(item, list):
+            return self._column_slice(item)
 
         raise TypeError(f'Argument must be of type str or Expression. not: {type(item)}')
 
