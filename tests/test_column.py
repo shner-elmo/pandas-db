@@ -477,6 +477,26 @@ class TestColumn(unittest.TestCase):
     def test_repr_html_(self):
         self.assertIsInstance(self.column._repr_html_(), str)
 
+    def test_contains(self):
+        self.assertTrue('South Asia' in self.db.regions.region)
+        self.assertTrue('South Asia'.lower() not in self.db.regions.region)
+        self.assertTrue('Zambia' in self.db.regions.country_name)
+        self.assertTrue(5490 in self.db.forest_area.forest_area_sqkm)
+        self.assertTrue(5490.0 in self.db.forest_area.forest_area_sqkm)
+        self.assertTrue(577311.99220 in self.db.forest_area.forest_area_sqkm)
+        self.assertTrue(7705.39978 in self.db.forest_area.forest_area_sqkm)
+        self.assertTrue('ABW' in self.db.forest_area.country_code)
+
+        for col in col_iterator(self.db):
+            val_counts = col.value_counts()
+            min_val = min(val_counts, key=val_counts.get)
+            max_val = max(val_counts, key=val_counts.get)
+            non_existent_val = get_random_name(20)
+
+            self.assertTrue(min_val in col)
+            self.assertTrue(max_val in col)
+            self.assertTrue(non_existent_val not in col)
+
 
 class TestColumnLogicalOp(unittest.TestCase):
     """

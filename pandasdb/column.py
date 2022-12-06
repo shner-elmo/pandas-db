@@ -586,6 +586,14 @@ class Column:
         """ Return column in HTML """
         return self._repr_df().to_html(show_dimensions=False, max_rows=10)
 
+    def __contains__(self, item: ColumnValue) -> bool:
+        """
+        Return True if item is present in the column, else False
+        """
+        with self.conn as cur:
+            out = cur.execute(f'{self.query} WHERE {self.name} = {convert_type_to_sql(item)} LIMIT 1')
+        return len(out.fetchall()) == 1
+
     def __add__(self, other: Column | Iterable | Numeric | str) -> Generator[ColumnValue, None, None]:
         """
         Return a generator with the arithmetic operation applied on each element
