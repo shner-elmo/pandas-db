@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "pandasdb"
-version = " 2.0.1"  # change version
+name = "pandasdb2"
+version = "2.0.2"
 description = "Pandas but without bringing the data into memory"
 authors = ["Shneor Elmaleh <770elmo@gmail.com>"]
 license = "MIT"
