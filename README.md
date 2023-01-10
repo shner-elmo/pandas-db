@@ -53,7 +53,7 @@ Now let's visualize this and see the amount of memory a `Database` object consum
 
 Import the package:
 ```python
-from pandasdb import Database
+from pandasdb2 import Database
 ```
 Create a connection:
 ```python
@@ -71,7 +71,7 @@ db.tables, db.stock_data.shape
 
 `db` object size:
 ```python
-from pandasdb.utils import get_gb_size
+from pandasdb2.utils import get_gb_size
 get_gb_size(db)
 ```
 ```
@@ -94,7 +94,7 @@ As you can see, while the Database object remains almost the same size the Dataf
 
 Once you have the package installed, import the package:
 ```python
-from pandasdb import Database
+from pandasdb2 import Database
 ```
 
 To instantiate the Database class you need to pass the path to the Database file, which could be one of the following extensions: db, sql, or sqlite
