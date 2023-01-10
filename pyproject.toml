@@ -35,7 +35,7 @@ classifiers = [
 issues = "https://github.com/shner-elmo/pandas-db/issues"
 
 [tool.poetry.dependencies]
-python = ">=3.70"
+python = ">=3.7"
 pandas = "^1.5.2"
 pympler = "^1.0.1"
 
